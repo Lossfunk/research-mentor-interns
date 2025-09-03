@@ -202,6 +202,11 @@ def main() -> None:
         action="store_true",
         help="Show comprehensive help about environment variables, .env file usage, and configuration options, then exit"
     )
+    parser.add_argument(
+        "--list-tools",
+        action="store_true",
+        help="Discover and list available tools (ignores FF_REGISTRY_ENABLED), then exit",
+    )
 
     try:
         args, _unknown = parser.parse_known_args()
@@ -222,6 +227,20 @@ def main() -> None:
     # Handle environment help command
     if getattr(args, 'env_help', False):
         _show_env_help()
+        return
+
+    # Handle tool listing (forces discovery)
+    if getattr(args, 'list_tools', False):
+        try:
+            from .tools import auto_discover as _auto, list_tools as _list
+            _auto()
+            names = sorted(list(_list().keys()))
+            if names:
+                print_info(f"Discovered tools ({len(names)}): {', '.join(names)}")
+            else:
+                print_info("No tools discovered.")
+        except Exception as e:  # noqa: BLE001
+            print_error(f"Tool listing failed: {e}")
         return
 
     # Prefer new env vars; keep backward-compatible AGNO_* fallback
