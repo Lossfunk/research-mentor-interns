@@ -53,4 +53,15 @@ WS3 Extension - Tool Integration (completed):
 - End-to-end testing: CLI queries now use dynamic tool selection (o3_search preferred, score: 2.1).
 - Real literature search results: Papers returned from actual searches via orchestrator.
 
-Next: Consider fallback policy improvements, additional tools, or execution optimization. The foundation is ready for further tool ecosystem expansion.
+WS3 Fallback Policy Enhancement (completed):
+- Created `core/fallback_policy.py`: Circuit breaker pattern, retry logic, degraded modes (99 LOC).
+- Created `core/execution_engine.py`: Tool execution with retries, keeping orchestrator under 200 LOC (95 LOC).
+- Enhanced Orchestrator: Uses FallbackPolicy for intelligent execution strategies.
+- Circuit breaker: Tools blocked after 3 failures, auto-recovery after 5min timeout.
+- Retry logic: Exponential backoff (1s, 2s, 4s max), skip non-retryable errors.
+- Fallback chain: Primary tool → retry → fallback tool → degraded mode.
+- Health tracking: Tool states (healthy/degraded/circuit_open), failure counts.
+- Tested scenarios: Normal execution, circuit breaker trigger, automatic fallback, recovery.
+- All 7 tests still passing.
+
+Next: WS4 (Transparency & Streaming) per TODO.md timeline, or additional tool ecosystem expansion.
