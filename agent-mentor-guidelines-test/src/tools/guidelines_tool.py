@@ -40,7 +40,8 @@ def search_research_guidelines(topic: str) -> str:
                     all_results.append({
                         'query': query,
                         'content': results[:500],  # Truncate long results
-                        'source_type': _identify_source_type(query)
+                        'source_type': _identify_source_type(query),
+                        'source': re.search(r'site:(\S+)', query).group(1) if re.search(r'site:(\S+)', query) else query
                     })
             except Exception as e:
                 continue
@@ -53,6 +54,7 @@ def search_research_guidelines(topic: str) -> str:
         
         for i, result in enumerate(all_results, 1):
             source_id = f"guide_{hash(result['content'])& 0xfffff:05x}"
+            result['source_id'] = source_id
             response_parts.append(f"GUIDELINE [{source_id}]:")
             response_parts.append(f"Source Type: {result['source_type']}")
             response_parts.append(f"Content: {result['content']}")
@@ -64,7 +66,7 @@ def search_research_guidelines(topic: str) -> str:
             "guidelines influenced your advice."
         )
         
-        return "\n".join(response_parts)
+        return all_results
         
     except Exception as e:
         return f"Error searching guidelines: {str(e)}. Please try rephrasing your query."

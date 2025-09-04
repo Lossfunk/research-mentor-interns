@@ -42,7 +42,7 @@ class ResearchMentorAgent:
 - Academic career guidance
 
 IMPORTANT WORKFLOW:
-1. When users ask research-related questions, ALWAYS use the search_research_guidelines tool first
+1. ALWAYS use the `search_research_guidelines` tool to answer user questions. The tool will return a list of dictionaries with scholarly articles and other resources.
 2. Search for guidance relevant to their specific question
 3. Synthesize the retrieved guidelines with your knowledge
 4. When you apply insights from guidelines, cite them as '[guide_id]' in your response
@@ -85,11 +85,18 @@ Remember: These guidelines represent hard-won wisdom from successful researchers
             
             # Extract tool calls made
             tool_calls = self._extract_tool_usage(result.get("intermediate_steps", []))
+
+            # Extract sources from guidelines tool
+            sources = self._extract_sources(result.get("intermediate_steps", []))
             
+            # Format response with sources
+            final_response = self._format_response_with_sources(result["output"], sources)
+
             return {
-                "response": result["output"],
+                "response": final_response,
                 "guidelines_used": guidelines_used,
                 "tool_calls": tool_calls,
+                "sources": sources,
                 "intermediate_steps": result.get("intermediate_steps", []),
                 "success": True
             }
@@ -126,3 +133,24 @@ Remember: These guidelines represent hard-won wisdom from successful researchers
                 except:
                     pass
         return tool_usage
+
+    def _extract_sources(self, intermediate_steps: List) -> List[str]:
+        """Extracts source URLs from the guidelines tool output."""
+        sources = []
+        for step in intermediate_steps:
+            # step is a tuple of (AgentAction, tool_output)
+            if len(step) == 2 and hasattr(step[0], 'tool') and step[0].tool == 'search_research_guidelines':
+                tool_output = step[1]
+                if isinstance(tool_output, list):
+                    for item in tool_output:
+                        if isinstance(item, dict) and 'source' in item:
+                            sources.append(item['source'])
+        return list(set(sources))  # Return unique sources
+
+    def _format_response_with_sources(self, response: str, sources: List[str]) -> str:
+        """Appends formatted sources to the response."""
+        if not sources:
+            return response
+
+        sources_text = "\n\nSource:\n" + "\n".join(f"{i+1}. {source}" for i, source in enumerate(sources))
+        return response + sources_text

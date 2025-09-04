@@ -39,14 +39,12 @@ def main():
         
         if result["success"]:
             print(f"\n🤖 Agent: {result['response']}")
-            
-            if result["guidelines_used"]:
-                print(f"\n📋 Guidelines Applied: {', '.join(result['guidelines_used'])}")
-            
-            if result["tool_calls"]:
-                print(f"\n🔍 Tools Used: {', '.join([tc['tool'] for tc in result['tool_calls']])}")
         else:
             print(f"\n❌ Error: {result['error']}")
 
 if __name__ == "__main__":
     main()
+
+
+
+
