@@ -76,7 +76,7 @@ def search_research_guidelines(topic: str) -> str:
         all_results = []
         seen_urls = set()
         
-        for query in search_queries[:5]:  # Use more queries for better coverage
+        for query in search_queries[:config.MAX_SEARCH_QUERIES]:  # Use configurable limit
             try:
                 results = search.run(query)
                 # Parse and filter results (this is a simplified version)

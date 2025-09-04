@@ -10,6 +10,12 @@ class Config:
     MODEL_NAME = "gpt-5-nano"
     TEMPERATURE = 0.1
     
+    # Cost Optimization Settings
+    ENABLE_CACHING = True
+    CACHE_TTL_HOURS = 24  # Cache responses for 24 hours
+    MAX_SEARCH_QUERIES = 3  # Reduced from 5 to save on search costs
+    ENABLE_COST_MONITORING = True
+    
     # Guidelines Sources - Domain mapping for filtering
     GUIDELINE_SOURCES = {
         "gwern.net": "Hamming on research methodology and important problems",

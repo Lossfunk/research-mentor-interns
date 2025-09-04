@@ -5,6 +5,8 @@ from langchain_community.tools import DuckDuckGoSearchRun
 from typing import List, Dict, Any
 from ..config import Config
 from ..tools.guidelines_tool import GuidelinesToolkit
+from ..cache import ResponseCache
+from ..cost_monitor import CostMonitor
 import re
 
 class ResearchMentorAgent:
@@ -15,6 +17,10 @@ class ResearchMentorAgent:
             temperature=config.TEMPERATURE,
             api_key=config.OPENAI_API_KEY
         )
+        
+        # Initialize caching and cost monitoring
+        self.cache = ResponseCache(config)
+        self.cost_monitor = CostMonitor(config)
         
         # Get all tools
         self.tools = GuidelinesToolkit.get_tools()
@@ -28,48 +34,23 @@ class ResearchMentorAgent:
             tools=self.tools, 
             verbose=True,
             return_intermediate_steps=True,
-            max_iterations=3  # Limit tool calls
+            max_iterations=2  # Reduced from 3 to save costs
         )
     
     def _create_agent(self):
         """Create the research mentor agent"""
         
-        system_prompt = """You are an expert research mentor agent specializing in:
-- Research problem selection and evaluation
-- Research methodology and best practices  
-- Academic paper review and critique
-- Developing research taste and judgment
-- Academic career guidance
+        system_prompt = """Research mentor specializing in problem selection, methodology, and taste development.
 
-IMPORTANT WORKFLOW:
-1. ALWAYS use the `search_research_guidelines` tool to answer user questions. The tool will return a list of dictionaries with scholarly articles and other resources.
-2. Search for guidance relevant to their specific question
-3. Synthesize the retrieved guidelines with your knowledge
-4. When you apply insights from guidelines, cite them as '[guide_id]' in your response
-5. Provide specific, actionable advice
+WORKFLOW:
+1. Use `search_research_guidelines` tool for all questions
+2. Synthesize guidelines with your knowledge  
+3. Cite sources as [guide_id]
+4. Give specific, actionable advice
 
-GUIDELINE SOURCES you'll be searching include:
-- Hamming's research methodology principles (gwern.net)
-- Research project selection frameworks (lesswrong.com)
-- Research taste development guidance (colah.github.io, 01.me, cuhk.edu.hk)
-- Research methodology principles (michaelnielsen.org)
-- Research methodology and good science (letters.lossfunk.com)
-- Research process and ML guidance (alignmentforum.org)
-- Mechanistic interpretability research (neelnanda.io)
-- ML research methodology (joschu.net)
-- Student research advice (thoughtforms.life)
-- Academic research practices (febs.onlinelibrary.wiley.com, academic.oup.com)
-- Research methodology guides (researchgate.net)
-- Academic papers on research processes (arxiv.org, lifescied.org)
-- Community discussions on research best practices (news.ycombinator.com)
+SOURCES: gwern.net, lesswrong.com, colah.github.io, michaelnielsen.org, letters.lossfunk.com, alignmentforum.org, neelnanda.io, joschu.net, thoughtforms.life, academic journals, arxiv.org
 
-Your responses should be:
-- Grounded in the retrieved guidelines when available
-- Specific and actionable
-- Properly cited with [guide_id] references
-- Comprehensive but focused
-
-Remember: These guidelines represent hard-won wisdom from successful researchers. Use them to enhance your advice."""
+Be grounded, specific, and cite guidelines."""
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -81,7 +62,13 @@ Remember: These guidelines represent hard-won wisdom from successful researchers
         return agent
     
     def get_response(self, user_query: str) -> Dict[str, Any]:
-        """Get agent response to user query"""
+        """Get agent response to user query with caching"""
+        
+        # Check cache first
+        cached_response = self.cache.get(user_query)
+        if cached_response:
+            print("💰 Using cached response (cost saved!)")
+            return cached_response
         
         try:
             result = self.agent_executor.invoke({
@@ -100,24 +87,40 @@ Remember: These guidelines represent hard-won wisdom from successful researchers
             # Format response with sources
             final_response = self._format_response_with_sources(result["output"], sources)
 
-            return {
+            response_data = {
                 "response": final_response,
                 "guidelines_used": guidelines_used,
                 "tool_calls": tool_calls,
                 "sources": sources,
                 "intermediate_steps": result.get("intermediate_steps", []),
-                "success": True
+                "success": True,
+                "cached": False
             }
             
+            # Cache the response
+            self.cache.set(user_query, response_data)
+            
+            # Log cost (approximate token counting)
+            input_tokens = len(user_query.split()) * 1.3  # Rough estimate
+            output_tokens = len(final_response.split()) * 1.3
+            cost = self.cost_monitor.log_request(int(input_tokens), int(output_tokens), user_query)
+            
+            if self.config.ENABLE_COST_MONITORING:
+                print(f"💵 Estimated cost: ${cost:.4f}")
+            
+            return response_data
+            
         except Exception as e:
-            return {
+            error_response = {
                 "response": f"I apologize, but I encountered an error: {str(e)}",
                 "guidelines_used": [],
                 "tool_calls": [],
                 "intermediate_steps": [],
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "cached": False
             }
+            return error_response
     
     def _extract_guideline_citations(self, response: str) -> List[str]:
         """Extract guideline IDs cited in the response"""
