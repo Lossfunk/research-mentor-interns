@@ -75,6 +75,77 @@ def _run_methodology_validate_and_print(plan: str) -> None:
             print(f"- {key}: {', '.join(str(x) for x in items)}")
 
 
+def _run_guidelines_and_print(query: str, topic: Optional[str] = None) -> None:
+    """Run guidelines tool and print results."""
+    # Try to use orchestrator first if available
+    try:
+        from .core.orchestrator import Orchestrator
+        orchestrator = Orchestrator()
+        context = {"goal": query, "query": query}
+        if topic:
+            context["topic"] = topic
+        
+        result = orchestrator.execute_task("guidelines_search", {"query": query, "topic": topic or query}, context)
+        
+        if result.get("execution", {}).get("executed"):
+            guidelines_result = result.get("results", {})
+            print("Mentor.tools (Research Guidelines):")
+            
+            if guidelines_result.get("retrieved_guidelines"):
+                for guideline in guidelines_result["retrieved_guidelines"]:
+                    source_type = guideline.get("source_type", "Unknown source")
+                    guide_id = guideline.get("guide_id", "unknown")
+                    print(f"- {source_type} [ID: {guide_id}]")
+                    
+                if guidelines_result.get("formatted_content"):
+                    content = guidelines_result["formatted_content"]
+                    # Show first 500 chars of formatted content
+                    if len(content) > 500:
+                        content = content[:500] + "..."
+                    print(f"\nGuidelines summary: {content}")
+            else:
+                print("- No guidelines found for this query")
+        else:
+            # Fallback to direct tool usage
+            _run_guidelines_fallback(query, topic)
+            
+    except Exception:
+        # Fallback to direct tool usage
+        _run_guidelines_fallback(query, topic)
+
+
+def _run_guidelines_fallback(query: str, topic: Optional[str] = None) -> None:
+    """Fallback direct guidelines tool usage."""
+    try:
+        from .tools.guidelines.tool import GuidelinesTool
+        tool = GuidelinesTool()
+        tool.initialize()
+        
+        inputs = {"query": query}
+        if topic:
+            inputs["topic"] = topic
+            
+        result = tool.execute(inputs)
+        
+        print("Mentor.tools (Research Guidelines):")
+        if result.get("retrieved_guidelines"):
+            for guideline in result["retrieved_guidelines"]:
+                source_type = guideline.get("source_type", "Unknown source")
+                guide_id = guideline.get("guide_id", "unknown")
+                print(f"- {source_type} [ID: {guide_id}]")
+                
+            if result.get("formatted_content"):
+                content = result["formatted_content"]
+                if len(content) > 500:
+                    content = content[:500] + "..."
+                print(f"\nGuidelines summary: {content}")
+        else:
+            print(f"- {result.get('note', 'No guidelines found')}")
+            
+    except Exception as e:
+        print(f"Mentor.tools (Research Guidelines): Error - {e}")
+
+
 def _extract_topic_from_text(text: str) -> Optional[str]:
     if not text:
         return None
@@ -111,6 +182,27 @@ def route_and_maybe_run_tool(user: str) -> bool:
     s = user.strip()
     if not s:
         return False
+
+    # Check for research guidelines queries first (before venue guidelines)
+    guidelines_patterns = [
+        r"\b(?:research\s+)?guidelines?\s+(?:for|on|about)?\s+(.+)$",
+        r"\b(?:how\s+to\s+)?(?:choose|select|pick)\s+(?:a\s+)?(?:good\s+)?(?:research\s+)?(?:problem|project|topic)\b",
+        r"\b(?:research\s+)?(?:methodology|approach|process)\s+(?:advice|guidance|tips)\b",
+        r"\b(?:develop|improve)\s+(?:research\s+)?taste\s+(?:and\s+judgment)?\b",
+        r"\b(?:phd|graduate|academic)\s+(?:advice|guidance|career)\s+(?:planning|strategy)?\b",
+        r"\b(?:what\s+)?(?:makes\s+)?(?:a\s+)?(?:good\s+)?(?:research\s+)?(?:problem|project|question)\b",
+        r"\b(?:effective|good)\s+(?:research\s+)?principles?\b",
+        r"\b(?:research\s+)?(?:best\s+)?practices?\b",
+        r"\b(?:hamming|lesswrong|colah|nielsen)\s+(?:research\s+)?(?:advice|guidance)\b",
+    ]
+    
+    for pattern in guidelines_patterns:
+        match = re.search(pattern, s, flags=re.IGNORECASE)
+        if match:
+            query = match.group(1) if match.groups() else s
+            topic = query.strip() if query else s.strip()
+            _run_guidelines_and_print(s, topic)
+            return True
 
     m = re.search(r"(?:author\s+)?guidelines(?:\s+for)?\s+([A-Za-z]+)(?:\s+(\d{4}))?", s, flags=re.IGNORECASE)
     if m:

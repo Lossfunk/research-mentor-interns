@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from ..base_tool import BaseTool
 from .config import GuidelinesConfig
+from .cache import GuidelinesCache, CostTracker
 
 
 class GuidelinesTool(BaseTool):
@@ -23,6 +24,8 @@ class GuidelinesTool(BaseTool):
     def __init__(self) -> None:
         self.config = GuidelinesConfig()
         self._search_tool = None
+        self._cache = None
+        self._cost_tracker = None
     
     def initialize(self, config: Optional[Dict[str, Any]] = None) -> None:
         """Initialize the guidelines tool with optional configuration."""
@@ -32,6 +35,10 @@ class GuidelinesTool(BaseTool):
         except ImportError:
             # Graceful fallback if DuckDuckGo search not available
             self._search_tool = None
+        
+        # Initialize caching and cost tracking
+        self._cache = GuidelinesCache(self.config)
+        self._cost_tracker = self._cache.cost_tracker
     
     def can_handle(self, task_context: Optional[Dict[str, Any]] = None) -> bool:
         """Check if this tool can handle research guidelines queries."""
@@ -82,6 +89,20 @@ class GuidelinesTool(BaseTool):
                 "note": "Search tool not available"
             }
         
+        # Check cache first
+        cache_key = f"{query}:{topic}"
+        cached_result = self._cache.get(cache_key) if self._cache else None
+        
+        if cached_result:
+            # Add cache note and return cached result
+            cached_result["cached"] = True
+            cached_result["cache_note"] = "Result served from cache"
+            return cached_result
+        
+        # Record cache miss
+        if self._cost_tracker:
+            self._cost_tracker.record_cache_miss()
+        
         try:
             # Generate targeted search queries based on topic
             search_queries = self._get_prioritized_queries(topic)[:self.config.MAX_SEARCH_QUERIES]
@@ -104,37 +125,59 @@ class GuidelinesTool(BaseTool):
                             "search_query": query_str
                         })
                         
+                        # Track search query cost
+                        if self._cost_tracker:
+                            self._cost_tracker.record_search_query(0.01)  # $0.01 per query estimate
+                        
                 except Exception:
                     # Continue with other queries if one fails
                     continue
             
             if not retrieved_guidelines:
-                return {
+                result = {
                     "retrieved_guidelines": [],
                     "formatted_content": f"No guidelines found for '{topic}' in curated sources. Try rephrasing your query.",
                     "total_guidelines": 0,
-                    "note": "No guidelines retrieved from search"
+                    "note": "No guidelines retrieved from search",
+                    "cached": False
                 }
+                
+                # Cache negative result
+                if self._cache:
+                    self._cache.set(cache_key, result)
+                
+                return result
             
             # Format content for agent consumption (RAG-style)
             formatted_content = self._format_guidelines_for_agent(topic, retrieved_guidelines)
             
-            return {
+            result = {
                 "retrieved_guidelines": retrieved_guidelines,
                 "formatted_content": formatted_content,
                 "total_guidelines": len(retrieved_guidelines),
                 "topic": topic,
-                "note": f"Retrieved {len(retrieved_guidelines)} relevant guidelines for agent reasoning"
+                "note": f"Retrieved {len(retrieved_guidelines)} relevant guidelines for agent reasoning",
+                "cached": False
             }
             
+            # Cache successful result
+            if self._cache:
+                self._cache.set(cache_key, result)
+            
+            return result
+            
         except Exception as e:
-            return {
+            error_result = {
                 "retrieved_guidelines": [],
                 "formatted_content": f"Error searching guidelines: {e}",
                 "total_guidelines": 0,
                 "error": str(e),
-                "note": "Error in guidelines search"
+                "note": "Error in guidelines search",
+                "cached": False
             }
+            
+            # Don't cache error results
+            return error_result
     
     def get_metadata(self) -> Dict[str, Any]:
         """Return tool metadata for selection and usage."""
@@ -158,14 +201,18 @@ class GuidelinesTool(BaseTool):
                 "properties": {
                     "retrieved_guidelines": {"type": "array"},
                     "formatted_content": {"type": "string"},
-                    "total_guidelines": {"type": "integer"}
+                    "total_guidelines": {"type": "integer"},
+                    "cached": {"type": "boolean"},
+                    "cache_note": {"type": "string"}
                 }
             }
         }
         meta["operational"] = {
             "cost_estimate": "low-medium",
             "latency_profile": "5-10 seconds",
-            "rate_limits": "3 searches per query"
+            "rate_limits": "3 searches per query",
+            "caching_enabled": self.config.ENABLE_CACHING,
+            "cache_ttl_hours": self.config.CACHE_TTL_HOURS if self.config.ENABLE_CACHING else None
         }
         meta["usage"] = {
             "ideal_inputs": ["research methodology questions", "academic career advice", "problem selection guidance"],
@@ -173,6 +220,29 @@ class GuidelinesTool(BaseTool):
             "prerequisites": ["internet connection for search"]
         }
         return meta
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache and cost statistics."""
+        if not self._cost_tracker:
+            return {"error": "Cost tracker not initialized"}
+        
+        stats = self._cost_tracker.get_stats()
+        stats["cache_hit_rate"] = self._cost_tracker.get_cache_hit_rate()
+        return stats
+    
+    def clear_cache(self) -> Dict[str, Any]:
+        """Clear all cached results."""
+        if not self._cache:
+            return {"error": "Cache not initialized"}
+        
+        old_stats = self._cost_tracker.get_stats() if self._cost_tracker else {}
+        self._cache.clear()
+        
+        return {
+            "message": "Cache cleared successfully",
+            "old_stats": old_stats,
+            "cache_enabled": self.config.ENABLE_CACHING
+        }
     
     def _identify_source_type(self, query: str) -> str:
         """Identify the source type based on the search query."""
