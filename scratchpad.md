@@ -18,6 +18,79 @@ WS1 Decisions & Actions (completed):
 WS2 Decisions & Actions (in progress):
 - Extended `BaseTool` with lifecycle (`initialize`, `cleanup`), `can_handle`, and `get_metadata`.
 - Implemented registry `auto_discover()` with validation; added tests.
+
+## SearchTheArXiv Tool Implementation (Completed)
+
+### Overview
+Successfully implemented searchthearxiv.com as a standalone literature search tool that complements the existing O3 search tool. The tool specializes in semantic/natural language search for arXiv papers.
+
+### Implementation Details
+
+#### Tool Structure
+- **Location**: `src/academic_research_mentor/tools/searchthearxiv/`
+- **Files**: `__init__.py`, `tool.py`
+- **Dependencies**: Added `beautifulsoup4>=4.12.0` to pyproject.toml
+
+#### Key Features
+- **Semantic Search**: Uses natural language processing to understand conversational queries
+- **Web Scraping**: Implements BeautifulSoup-based scraping of searchthearxiv.com
+- **Error Handling**: Robust retry logic and graceful degradation
+- **Auto-discovery**: Automatically registered via tool registry system
+
+#### Tool Selection Logic
+- **Natural Language Queries**: Gets priority (score 1.4+) for queries like "find papers about..."
+- **Explicit arXiv Searches**: Lower priority (score 1.1) for queries like "arxiv search transformer"
+- **Keyword Queries**: O3 search handles traditional keyword searches
+
+#### Scoring System Updates
+- Added `SEMANTIC_SEARCH_NAMES = {"searchthearxiv_search"}` to recommendation engine
+- Implemented intelligent scoring based on query type:
+  - Natural language: searchthearxiv_search (1.4)
+  - Explicit arXiv: o3_search (1.2)
+  - Keywords: o3_search (0.8)
+
+#### Integration Status
+- ✅ Tool implementation complete
+- ✅ Auto-discovery working
+- ✅ Recommendation engine updated
+- ✅ Tests updated and passing
+- ✅ Dependencies installed
+- ⚠️ Service Issues: searchthearxiv.com currently experiencing 500 errors
+
+### Testing Results
+All tests pass with updated expectations:
+- Natural language queries correctly select searchthearxiv_search
+- Explicit arXiv queries correctly select o3_search
+- Legacy tools properly deprioritized
+- Guidelines tool maintains priority for mentorship queries
+
+### Current Limitations
+- searchthearxiv.com search endpoint returning 500 errors
+- Tool implemented but cannot be fully tested until service is restored
+- Reliability score lowered to 0.4 due to service issues
+
+### Future Improvements
+- Monitor searchthearxiv.com service status
+- Consider fallback to O3 search when service is unavailable
+- Add more sophisticated HTML parsing when service is restored
+- Implement caching for search results
+
+### Refactoring Complete (200 LOC Compliance)
+Successfully broke down the original 393-line `tool.py` into focused modules:
+
+#### Final File Structure:
+- **`tool.py`** (191 lines): Main tool class with BaseTool interface
+- **`scraper.py`** (80 lines): HTTP client and retry logic
+- **`parser.py`** (160 lines): HTML parsing and result extraction
+- **`__init__.py`** (4 lines): Package initialization
+
+#### Benefits:
+- ✅ All files under 200 LOC limit
+- ✅ Clear separation of concerns
+- ✅ Easier testing and maintenance
+- ✅ Better code organization
+- ✅ All functionality preserved
+- ✅ Tests still passing
 - Added `tools/o3_search/tool.py` with metadata and `can_handle`.
 - Added `tools/legacy/arxiv/tool.py` wrapper for legacy arXiv search (auto-discovered as fallback).
 - Added `core/bootstrap.py`; wired CLI to bootstrap registry behind `FF_REGISTRY_ENABLED`.
