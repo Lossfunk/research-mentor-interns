@@ -10,6 +10,9 @@ wheels/
 .venv
 .env
 
+#conversation logs
+convo-logs/
+
 #Documents
 claude.md
 RULES.md
