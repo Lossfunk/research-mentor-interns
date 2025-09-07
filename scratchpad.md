@@ -168,7 +168,34 @@ Remaining Tasks (COMPLETED):
 
 The guidelines tool is now fully integrated and ready for production use. All remaining tasks from the integration plan have been completed successfully.
 
+## Final Integration Results & Testing (Updated):
+
+### Key Issue Resolution:
+- **Problem**: Guidelines tool was being overridden by o3_search due to scoring system bias
+- **Solution**: Fixed recommendation scoring in `core/recommendation.py` to prioritize guidelines tool for mentorship queries
+- **Result**: Guidelines tool now gets scores 4.0-7.2 for mentorship queries vs o3_search scores 3.0-3.5
+
+### Critical Configuration Fix:
+- **Disabled unified guidelines**: Set `ARM_GUIDELINES_MODE=off` in `.env` to prevent interference from `unified_guidelines.json`
+- **Agent mode**: Set `LC_AGENT_MODE=react` to enable agent-driven tool selection
+- **Tool selection**: Agent now intelligently chooses between guidelines tool (mentorship) and o3_search (literature)
+
+### Comprehensive Testing Results:
+Tested with 4 research queries:
+1. **AI Alignment Research Idea** - Agent engaged technically (no guidelines needed)
+2. **Controversial ML Research Idea** - Agent provided critical analysis (no guidelines needed)
+3. **Research Taste Development** - Guidelines tool activated (score: 7.2) with comprehensive mentorship advice
+4. **PhD Problem Selection** - Guidelines tool activated (score: 4.9) with structured guidance
+
+### Success Criteria Met:
+- ✅ Agent-driven tool selection working properly
+- ✅ Guidelines tool provides comprehensive, sourced advice with citations
+- ✅ Tool scores appropriately prioritize guidelines for mentorship queries
+- ✅ No more forced literature search - agent makes intelligent decisions
+- ✅ Integration maintains backward compatibility
+
 ## Next Steps:
 - Ready for WS4 (Transparency & Streaming) per TODO.md timeline
 - Or continue with additional tool ecosystem expansion
 - Consider adding more curated sources to guidelines configuration
+- Monitor real-world usage and refine scoring as needed
