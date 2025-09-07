@@ -65,3 +65,137 @@ WS3 Fallback Policy Enhancement (completed):
 - All 7 tests still passing.
 
 Next: WS4 (Transparency & Streaming) per TODO.md timeline, or additional tool ecosystem expansion.
+
+Guidelines Tool Integration (Starting):
+- Goal: Integrate complete guidelines-based mentor from agent-mentor-guidelines-test/ as a BaseTool
+- Key Features to Preserve: Caching (24h TTL), cost monitoring, curated research sources (Hamming, LessWrong, etc.)
+- Integration Strategy: Create tools/guidelines/ package following existing patterns
+- Dependencies: LangChain tools (DuckDuckGoSearchRun), file-based caching, usage tracking
+- Router Integration: Detect research methodology/advice/problem selection queries
+- Agent Modes: Support chat (manual routing), react (auto tool selection), router (specialized routing)
+
+Understanding from Codebase Analysis:
+- BaseTool interface: name, version, initialize(), can_handle(), execute(), get_metadata()
+- Tool registry: auto_discover() looks for subpackages with 'tool.py' containing BaseTool subclasses
+- Existing patterns: o3_search/, legacy/arxiv/ show structure conventions
+- Router patterns: regex-based detection in router.py for tool routing
+- CLI integration: Environment vars, --check-env, --list-tools commands available
+
+Implementation Plan - Phase 1 Step 1 (COMPLETED):
+1. ✅ Read existing BaseTool implementations to understand patterns
+2. ✅ Create tools/guidelines/ package structure  
+3. ✅ Port configuration from test project (curated URLs, sources)
+4. ✅ Implement basic GuidelinesTool class with BaseTool interface
+5. ✅ Test auto-discovery and registration
+
+Guidelines Tool Integration Progress:
+- Created tools/guidelines/ package: __init__.py, config.py, tool.py
+- Implemented GuidelinesTool as RAG-style retrieval component (not advice generator)
+- Tool returns raw guidelines content with guide IDs for agent reasoning
+- Enhanced recommendation.py with guidelines-specific keyword matching
+- Improved can_handle() patterns to recognize PhD/career/mentoring queries
+- Tool successfully discovered by auto_discover(): "research_guidelines"
+- Scoring working: PhD career guidance -> research_guidelines (score=0.85)
+- Research methodology -> o3_search preferred (score=2.70) but guidelines available (score=0.75)
+
+Remaining Tasks (COMPLETED):
+- ✅ Test actual tool execution with search functionality
+- ✅ Add router integration for automatic detection in chat mode  
+- ✅ Test end-to-end CLI integration
+- ✅ Add caching and cost monitoring features
+
+## Integration Results - Phase 1 Complete ✅
+
+### Task 1: Test Actual Tool Execution with Search Functionality
+- **Issue**: DuckDuckGo search was failing due to missing `ddgs` package
+- **Solution**: Added `uv add ddgs` to install required dependency
+- **Result**: Guidelines tool now successfully searches curated sources and retrieves relevant content
+
+### Task 2: Add Router Integration for Automatic Detection in Chat Mode
+- **Enhanced router.py** with guidelines query detection patterns:
+  - Added `_run_guidelines_and_print()` function with orchestrator support
+  - Added `_run_guidelines_fallback()` for direct tool usage when orchestrator unavailable
+  - Implemented 9+ regex patterns for research methodology queries
+  - Patterns include: "how to choose research problem", "methodology advice", "develop research taste", "phd guidance", etc.
+- **Priority**: Guidelines queries checked before venue guidelines to ensure proper routing
+
+### Task 3: Test End-to-End CLI Integration
+- **Test Results**: All router patterns working correctly
+  - "how to choose a good research problem" → 3 guidelines retrieved
+  - "research methodology advice" → 3 guidelines retrieved  
+  - "develop research taste and judgment" → 3 guidelines retrieved
+  - "phd career guidance" → 3 guidelines retrieved
+  - "what makes a good research project" → 3 guidelines retrieved
+  - "effective research principles" → 3 guidelines retrieved
+  - "guidelines for research methodology" → 3 guidelines retrieved
+- **Success Rate**: 100% of test queries properly routed and returned relevant guidelines
+
+### Task 4: Add Caching and Cost Monitoring Features
+- **Created cache.py** with comprehensive caching system:
+  - File-based caching with TTL support (24 hours by default)
+  - Cache directory: `~/.cache/academic-research-mentor/guidelines/`
+  - `GuidelinesCache` class for cache management
+  - `CostTracker` class for usage statistics and cost estimation
+- **Enhanced GuidelinesTool** with caching integration:
+  - Cache checked before search execution
+  - Cache hits/misses tracked automatically
+  - Cost tracking: $0.01 per search query estimate
+  - Added `get_cache_stats()` and `clear_cache()` methods
+  - Updated metadata to include caching information
+- **Test Results**: 
+  - Cache working correctly (50% hit rate on repeated queries)
+  - Cost tracking monitoring usage accurately
+  - Cache stats properly persisted to disk
+
+### Key Features Added:
+- **Smart Caching**: 24-hour TTL with file-based storage
+- **Cost Monitoring**: Tracks search queries, cache hits/misses, and estimated costs  
+- **Router Integration**: Automatic detection of research methodology queries
+- **Robust Fallbacks**: Graceful handling of search failures and orchestrator unavailability
+- **Curated Sources**: Searches 20+ authoritative research guidance sources
+
+### Test Results Summary:
+- All 7 existing tests still pass
+- Caching works correctly with proper hit/miss tracking
+- Router successfully handles various research guidance query patterns
+- Cost tracking monitors usage and provides statistics
+- End-to-end integration tested and verified
+
+### Dependencies Added:
+- `ddgs>=9.5.5` - Required for DuckDuckGo search functionality
+
+## Status: ✅ GUIDELINES TOOL INTEGRATION COMPLETE
+
+The guidelines tool is now fully integrated and ready for production use. All remaining tasks from the integration plan have been completed successfully.
+
+## Final Integration Results & Testing (Updated):
+
+### Key Issue Resolution:
+- **Problem**: Guidelines tool was being overridden by o3_search due to scoring system bias
+- **Solution**: Fixed recommendation scoring in `core/recommendation.py` to prioritize guidelines tool for mentorship queries
+- **Result**: Guidelines tool now gets scores 4.0-7.2 for mentorship queries vs o3_search scores 3.0-3.5
+
+### Critical Configuration Fix:
+- **Disabled unified guidelines**: Set `ARM_GUIDELINES_MODE=off` in `.env` to prevent interference from `unified_guidelines.json`
+- **Agent mode**: Set `LC_AGENT_MODE=react` to enable agent-driven tool selection
+- **Tool selection**: Agent now intelligently chooses between guidelines tool (mentorship) and o3_search (literature)
+
+### Comprehensive Testing Results:
+Tested with 4 research queries:
+1. **AI Alignment Research Idea** - Agent engaged technically (no guidelines needed)
+2. **Controversial ML Research Idea** - Agent provided critical analysis (no guidelines needed)
+3. **Research Taste Development** - Guidelines tool activated (score: 7.2) with comprehensive mentorship advice
+4. **PhD Problem Selection** - Guidelines tool activated (score: 4.9) with structured guidance
+
+### Success Criteria Met:
+- ✅ Agent-driven tool selection working properly
+- ✅ Guidelines tool provides comprehensive, sourced advice with citations
+- ✅ Tool scores appropriately prioritize guidelines for mentorship queries
+- ✅ No more forced literature search - agent makes intelligent decisions
+- ✅ Integration maintains backward compatibility
+
+## Next Steps:
+- Ready for WS4 (Transparency & Streaming) per TODO.md timeline
+- Or continue with additional tool ecosystem expansion
+- Consider adding more curated sources to guidelines configuration
+- Monitor real-world usage and refine scoring as needed

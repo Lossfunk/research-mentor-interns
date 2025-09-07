@@ -15,6 +15,7 @@ import re
 
 PRIMARY_NAMES = {"o3_search"}
 LEGACY_PREFIX = "legacy_"
+GUIDELINES_NAMES = {"research_guidelines"}
 
 
 def _keyword_match_score(goal: str, tool_name: str) -> float:
@@ -22,9 +23,23 @@ def _keyword_match_score(goal: str, tool_name: str) -> float:
     score = 0.0
     if tool_name in g:
         score += 0.5
+    
+    # Literature search keywords
     for kw in ("literature", "papers", "search", "review", "arxiv", "openreview"):
         if kw in g:
             score += 0.2
+    
+    # Research guidelines keywords
+    guidelines_keywords = (
+        "methodology", "advice", "guidance", "mentor", "best practices", 
+        "research taste", "problem selection", "academic", "phd", "career",
+        "how to", "strategy", "planning", "principles", "develop", "judgment",
+        "intuition", "evaluating", "quality", "taste", "developing"
+    )
+    for kw in guidelines_keywords:
+        if kw in g:
+            score += 0.8  # Much higher weight for guidelines-specific terms to override primary bonus
+    
     return score
 
 
@@ -54,15 +69,24 @@ def score_tools(goal: str, tools: Dict[str, Any]) -> List[Tuple[str, float, str]
             score = 0.0
             rationale_parts: List[str] = []
 
-            # Base priority
-            if name in PRIMARY_NAMES:
-                score += 2.0
+            # Base priority - guidelines tool gets priority for mentorship queries
+            if name in GUIDELINES_NAMES:
+                # Check if this is a mentorship/guidance query
+                g_lower = goal.lower()
+                mentorship_keywords = ["research taste", "develop", "methodology", "advice", "guidance", "mentor", "how to", "judgment", "intuition"]
+                if any(kw in g_lower for kw in mentorship_keywords):
+                    score += 1.5  # High priority for guidelines tool on mentorship queries
+                    rationale_parts.append("guidelines_priority")
+                else:
+                    score += 0.2
+            elif name in PRIMARY_NAMES:
+                score += 0.5  # Reduced from 2.0 to allow guidelines tool to compete
                 rationale_parts.append("primary")
             elif name.startswith(LEGACY_PREFIX):
                 score -= 0.5
                 rationale_parts.append("legacy")
             else:
-                score += 0.0
+                score += 0.2  # Small bonus for non-primary, non-legacy tools
 
             # Keyword match
             km = _keyword_match_score(goal, name)

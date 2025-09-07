@@ -513,6 +513,54 @@ def get_langchain_tools() -> list[Any]:
                 lines.append(f"- {k}: {', '.join(str(x) for x in vals)}")
         return "\n".join(lines) or "No issues detected"
 
+    def _guidelines_tool_fn(query: str) -> str:
+        """Search for research methodology and mentorship guidelines from curated sources."""
+        try:
+            from .core.orchestrator import Orchestrator
+            from .tools import auto_discover
+            
+            # Ensure tools are discovered
+            auto_discover()
+            
+            orch = Orchestrator()
+            result = orch.execute_task(
+                task="research_guidelines",
+                inputs={"query": query, "topic": query},
+                context={"goal": f"research mentorship guidance about {query}"}
+            )
+            
+            if result["execution"]["executed"] and result["results"]:
+                tool_result = result["results"]
+                guidelines = tool_result.get("retrieved_guidelines", [])
+                
+                if not guidelines:
+                    return "No specific guidelines found for this query. Try rephrasing or ask more specific questions about research methodology."
+                
+                # Format guidelines for agent consumption
+                formatted_lines = [f"Found {len(guidelines)} relevant research guidelines:"]
+                
+                for guideline in guidelines:
+                    guide_id = guideline.get("guide_id", "unknown")
+                    source_type = guideline.get("source_type", "Research guidance")
+                    content = guideline.get("content", "")[:300]  # Truncate for token efficiency
+                    
+                    formatted_lines.append(f"GUIDELINE [{guide_id}]:")
+                    formatted_lines.append(f"Source: {source_type}")
+                    formatted_lines.append(f"Content: {content}")
+                    formatted_lines.append("---")
+                
+                formatted_lines.append(
+                    "\nUse these guidelines to provide evidence-based research advice. "
+                    "Reference specific guidelines as [guide_id] in your response."
+                )
+                
+                return "\n".join(formatted_lines)
+            else:
+                return "Guidelines search temporarily unavailable. Please try again later."
+                
+        except Exception as e:
+            return f"Error searching guidelines: {str(e)}"
+
     tools: list[Any] = [
         Tool(
             name="arxiv_search",
@@ -554,6 +602,17 @@ def get_langchain_tools() -> list[Any]:
             func=_method_tool_fn,
             description=(
                 "Validate an experiment plan for risks/controls/ablations/reproducibility gaps."
+            ),
+        ),
+        Tool(
+            name="research_guidelines",
+            func=_guidelines_tool_fn,
+            description=(
+                "Search curated research methodology and mentorship guidelines from expert sources. "
+                "Use this when users ask for research advice, methodology guidance, PhD help, "
+                "problem selection, research taste development, or academic career guidance. "
+                "Input: research question or topic (e.g. 'how to choose a research problem', 'developing research taste'). "
+                "Returns: structured guidelines from authoritative sources with source attribution."
             ),
         ),
     ]
