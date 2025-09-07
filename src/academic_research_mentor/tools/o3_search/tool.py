@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 from ..base_tool import BaseTool
 
 
-class O3SearchTool(BaseTool):
+class _O3SearchTool(BaseTool):
     name = "o3_search"
     version = "0.1"
 

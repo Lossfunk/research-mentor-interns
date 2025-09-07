@@ -98,7 +98,7 @@ def _verify_environment() -> None:
     formatter.console.print("")
 
     # Check agent configuration
-    agent_mode = os.environ.get("LC_AGENT_MODE", "chat")
+    agent_mode = os.environ.get("LC_AGENT_MODE", "react")
     prompt_variant = os.environ.get("ARM_PROMPT", os.environ.get("LC_PROMPT", "mentor"))
     ascii_mode = bool(os.environ.get("ARM_PROMPT_ASCII", os.environ.get("LC_PROMPT_ASCII")))
 
@@ -363,7 +363,7 @@ def main() -> None:
         return
 
     # Check agent mode to determine routing behavior
-    agent_mode = os.environ.get("LC_AGENT_MODE", "chat").strip().lower()
+    agent_mode = os.environ.get("LC_AGENT_MODE", "react").strip().lower()
     use_manual_routing = agent_mode == "chat"
 
     # Use Rich formatting for the welcome message
@@ -384,19 +384,21 @@ def main() -> None:
             continue
         if user.lower() in {"exit", "quit"}:
             break
-        # Step 1: Build research context using O3-powered literature review
-        research_context = build_research_context(user)
-
-        # Step 2: If manual routing is enabled and this is a simple tool request, handle it
-        if use_manual_routing and route_and_maybe_run_tool(user):
-            continue
-
-        # Step 3: Provide research context to the agent if available
-        if research_context.get("has_research_context", False):
-            # Enhance the agent's instructions with research context
-            context_prompt = research_context.get("context_for_agent", "")
-            enhanced_user_input = f"{context_prompt}\n\nUser Query: {user}"
+        # In react mode, let the agent decide which tools to use
+        if use_manual_routing:
+            # Chat mode: Build research context and use manual routing
+            research_context = build_research_context(user)
+            
+            if route_and_maybe_run_tool(user):
+                continue
+                
+            if research_context.get("has_research_context", False):
+                context_prompt = research_context.get("context_for_agent", "")
+                enhanced_user_input = f"{context_prompt}\n\nUser Query: {user}"
+            else:
+                enhanced_user_input = user
         else:
+            # React mode: Let agent decide which tools to use
             enhanced_user_input = user
 
         try:
