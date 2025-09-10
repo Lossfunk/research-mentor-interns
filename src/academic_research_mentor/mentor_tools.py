@@ -44,7 +44,7 @@ def is_tool_available(tool_name: str) -> bool:
     - For network tools, ensure httpx is importable.
     - For local heuristic tools, always True.
     """
-    network_tools = {"arxiv_search", "openreview_fetch", "venue_guidelines_get"}
+    network_tools = {"arxiv_search"}
     if tool_name in network_tools:
         return httpx is not None
     return True
@@ -175,7 +175,7 @@ def _detect_ml_domain(query: str) -> Optional[str]:
         return None
     
     # Return the domain with highest score
-    return max(domain_scores, key=domain_scores.get)
+    return max(domain_scores, key=lambda k: domain_scores[k])
 
 
 def _build_arxiv_query(raw_query: str, from_year: Optional[int]) -> str:
@@ -413,73 +413,7 @@ def arxiv_search(query: str, from_year: Optional[int] = None, limit: int = 10) -
         return {"papers": [], "note": "Failed to parse arXiv response."}
 
 
-# ----------------------
-# Tool: openreview_fetch
-# ----------------------
 
-def openreview_fetch(query: str, limit: int = 5) -> Dict[str, Any]:
-    """Best-effort OpenReview fetch.
-
-    OpenReview APIs vary; we attempt a permissive search endpoint and degrade gracefully.
-    Returns: {"threads": [{paper_title, venue?, year?, urls:{paper?, forum?}, excerpts?}], "note"?}
-    """
-    if not is_tool_available("openreview_fetch"):
-        return {"threads": [], "note": "httpx unavailable; could not query OpenReview."}
-
-    # Heuristic endpoint: search notes (fallback if unavailable)
-    base_url = "https://api.openreview.net/notes"
-    # Some deployments require additional params; keep it minimal
-    params = {"term": query, "limit": max(1, min(int(limit), 10))}
-
-    resp = _fetch_with_retry(base_url, params=params)
-    if resp is None:
-        # Fallback: lightweight web search for OpenReview forum links
-        threads = _openreview_web_fallback(query=query, limit=limit)
-        if threads:
-            return {"threads": threads, "note": "OpenReview API unavailable; used web fallback."}
-        return {"threads": [], "note": "OpenReview request failed or timed out."}
-
-    try:
-        data = resp.json()
-        notes = data.get("notes") or data.get("results") or []
-        threads: List[Dict[str, Any]] = []
-        for note in notes[: limit]:
-            content = note.get("content") or {}
-            title = content.get("title") or note.get("title") or ""
-            forum = note.get("forum") or note.get("id")
-            threads.append({
-                "paper_title": title,
-                "venue": content.get("venue") or content.get("venueid"),
-                "year": content.get("year"),
-                "urls": {
-                    "paper": f"https://openreview.net/forum?id={forum}" if forum else None,
-                    "forum": f"https://openreview.net/forum?id={forum}" if forum else None,
-                },
-                "excerpts": [content.get("abstract")] if content.get("abstract") else [],
-            })
-        if threads:
-            return {"threads": threads, "note": None}
-        # Try web fallback if API returned nothing
-        web_threads = _openreview_web_fallback(query=query, limit=limit)
-        if web_threads:
-            return {"threads": web_threads, "note": "OpenReview API returned no results; used web fallback."}
-        return {"threads": [], "note": "No results or incompatible API response."}
-    except Exception as exc:  # noqa: BLE001
-        LOGGER.debug("OpenReview parse error: %s", exc)
-        # Try web fallback on parse error
-        web_threads = _openreview_web_fallback(query=query, limit=limit)
-        if web_threads:
-            return {"threads": web_threads, "note": "Failed to parse OpenReview API; used web fallback."}
-        return {"threads": [], "note": "Failed to parse OpenReview response."}
-
-
-def _openreview_web_fallback(query: str, limit: int) -> List[Dict[str, Any]]:
-    """Very lightweight fallback: search for OpenReview forum links via DuckDuckGo HTML.
-
-    Avoids heavy scraping and external deps. Best-effort extraction of titles and forum URLs.
-    """
-    if httpx is None:
-        return []
     try:
         # Search for forum pages first; include conference keywords optionally
         q = f"site:openreview.net/forum {query}"
@@ -533,47 +467,7 @@ def _openreview_web_fallback(query: str, limit: int) -> List[Dict[str, Any]]:
         return []
 
 
-# ----------------------
-# Tool: venue_guidelines_get
-# ----------------------
 
-def venue_guidelines_get(venue: str, year: Optional[int] = None) -> Dict[str, Any]:
-    """Return likely author guideline URLs for common venues.
-
-    Avoid scraping for reliability. Provide URLs and minimal known fields when obvious.
-    """
-    normalized = venue.strip().upper()
-    if year is None:
-        # Default to near-future cycle; adjust as needed
-        year = 2025
-
-    guide_url: Optional[str] = None
-    template_url: Optional[str] = None
-
-    if normalized in {"ICLR"}:
-        guide_url = f"https://iclr.cc/Conferences/{year}/AuthorGuide"
-        template_url = None
-    elif normalized in {"NEURIPS", "NIPS"}:
-        guide_url = f"https://neurips.cc/Conferences/{year}/PaperInformation/AuthorGuidelines"
-        template_url = None
-    elif normalized in {"ACL"}:
-        guide_url = "https://aclrollingreview.org/author_guidelines"  # rolling
-    else:
-        guide_url = None
-
-    result: Dict[str, Any] = {
-        "guidelines": {
-            "page_limit": None,
-            "template": None,
-            "checklist_items": None,
-            "ethics_policy": None,
-            "artifact_policy": None,
-            "anonymization": None,
-            "deadlines": None,
-            "urls": {"guide": guide_url, "template": template_url},
-        }
-    }
-    return result
 
 
 # ----------------------
@@ -670,30 +564,8 @@ GEMINI_FUNCTION_DECLARATIONS: List[Dict[str, Any]] = [
             "required": ["query"],
         },
     },
-    {
-        "name": "openreview_fetch",
-        "description": "Fetch related OpenReview threads (best-effort).",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Keywords and/or venue"},
-                "limit": {"type": "number", "description": "Max threads (≤10)"},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "venue_guidelines_get",
-        "description": "Return likely author guideline URLs for a venue/year.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "venue": {"type": "string", "description": "Venue name (e.g., ICLR)"},
-                "year": {"type": "number", "description": "Target year"},
-            },
-            "required": ["venue"],
-        },
-    },
+    
+    
     {
         "name": "math_ground",
         "description": "Heuristic math grounding: assumptions, glossary, proof skeleton.",
@@ -741,16 +613,8 @@ def handle_mentor_function_call(function_name: str, function_args: Dict[str, Any
                 from_year=function_args.get("from_year"),
                 limit=int(function_args.get("limit", 10)),
             )
-        if function_name == "openreview_fetch":
-            return openreview_fetch(
-                query=str(function_args.get("query", "")),
-                limit=int(function_args.get("limit", 5)),
-            )
-        if function_name == "venue_guidelines_get":
-            return venue_guidelines_get(
-                venue=str(function_args.get("venue", "")),
-                year=function_args.get("year"),
-            )
+        
+        
         if function_name == "math_ground":
             return math_ground(
                 text_or_math=str(function_args.get("text_or_math", "")),
@@ -771,7 +635,7 @@ if __name__ == "__main__":
     # Tiny smoke tests with graceful degradation
     print("is_available(arxiv_search)", is_tool_available("arxiv_search"))
     print("arxiv_search sample:", arxiv_search("diffusion models", from_year=2023, limit=3))
-    print("openreview_fetch sample:", openreview_fetch("ICLR diffusion", limit=2))
-    print("venue_guidelines_get sample:", venue_guidelines_get("ICLR", 2025))
+    
+    
     print("math_ground sample:", math_ground("d/dx f(x) = 0 implies stationary point; ||x||_2", {}))
     print("methodology_validate sample:", methodology_validate("We evaluate with baselines; report seeds and ablations.", []))

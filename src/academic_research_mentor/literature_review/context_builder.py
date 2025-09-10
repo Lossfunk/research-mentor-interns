@@ -14,7 +14,7 @@ from datetime import datetime
 
 from .intent_extractor import extract_research_intent
 from .synthesis import synthesize_literature
-from ..mentor_tools import arxiv_search, openreview_fetch
+from ..mentor_tools import arxiv_search
 from .o3_client import get_o3_client
 
 
@@ -254,13 +254,7 @@ def _perform_literature_searches(topics: List[str], relax: bool = False) -> Dict
         print(f"arXiv search failed: {e}")
         search_results["arxiv"] = {"papers": [], "note": f"Search failed: {e}"}
     
-    try:
-        # OpenReview search
-        or_limit = 10 if relax else 8
-        search_results["openreview"] = openreview_fetch(query=query, limit=or_limit)
-    except Exception as e:
-        print(f"OpenReview search failed: {e}")
-        search_results["openreview"] = {"threads": [], "note": f"Search failed: {e}"}
+    
     
     search_results["orchestrator_used"] = False
     return search_results

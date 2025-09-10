@@ -20,35 +20,10 @@ def _run_arxiv_search_and_print(query: str) -> None:
         print(f"- {title} ({year}) → {url}")
 
 
-def _run_openreview_and_print(query: str) -> None:
-    from .mentor_tools import openreview_fetch  # lazy import
-    result: Dict[str, Any] = openreview_fetch(query=query, limit=5)
-    threads: List[Dict[str, Any]] = result.get("threads", []) if isinstance(result, dict) else []
-    if not threads:
-        note = result.get("note") if isinstance(result, dict) else None
-        print(f"Mentor.tools: No OpenReview threads found. {note or ''}")
-        return
-    print("Mentor.tools (OpenReview):")
-    for t in threads[:5]:
-        title = t.get("paper_title")
-        venue = t.get("venue")
-        year = t.get("year")
-        url = (t.get("urls") or {}).get("paper")
-        suffix = f" ({venue} {year})" if venue or year else ""
-        print(f"- {title}{suffix} → {url}")
 
 
-def _run_venue_guidelines_and_print(venue: str, year: Optional[int]) -> None:
-    from .mentor_tools import venue_guidelines_get  # lazy import
-    result: Dict[str, Any] = venue_guidelines_get(venue=venue, year=year)
-    g = (result or {}).get("guidelines", {})
-    urls = g.get("urls", {}) if isinstance(g, dict) else {}
-    print("Mentor.tools (Venue Guidelines):")
-    print(f"- Venue: {venue.upper()} {year or ''}")
-    if urls.get("guide"):
-        print(f"- Guide: {urls['guide']}")
-    if urls.get("template"):
-        print(f"- Template: {urls['template']}")
+
+
     if not urls.get("guide") and not urls.get("template"):
         print("- No known URLs. Try checking the venue website.")
 
@@ -62,6 +37,32 @@ def _run_math_ground_and_print(text: str) -> None:
         items = findings.get(key) or []
         if items:
             print(f"- {key}: {', '.join(str(x) for x in items[:3])}{'...' if len(items) > 3 else ''}")
+
+
+def _run_guidelines_and_print(query: str, topic: Optional[str] = None) -> None:
+    """Fallback direct guidelines tool usage."""
+    try:
+        from .tools.guidelines.tool import GuidelinesTool
+        tool = GuidelinesTool()
+        tool.initialize()
+        
+        inputs = {"query": query}
+        if topic:
+            inputs["topic"] = topic
+            
+        result = tool.execute(inputs, {"goal": f"research mentorship guidance about {query}"})
+        
+        guidelines = result.get("retrieved_guidelines", [])
+        if guidelines:
+            print("Mentor.tools (Research Guidelines):")
+            for guideline in guidelines[:3]:
+                source = guideline.get("source_domain", "Research guidance")
+                content = guideline.get("content", "")[:100]
+                print(f"- {source}: {content}...")
+        else:
+            print("Mentor.tools: No specific guidelines found.")
+    except Exception as e:
+        print(f"Mentor.tools: Guidelines search failed: {e}")
 
 
 def _run_methodology_validate_and_print(plan: str) -> None:
@@ -204,18 +205,9 @@ def route_and_maybe_run_tool(user: str) -> Optional[Dict[str, str]]:
             _run_guidelines_and_print(s, topic)
             return {"tool_name": "research_guidelines", "query": topic}
 
-    m = re.search(r"(?:author\s+)?guidelines(?:\s+for)?\s+([A-Za-z]+)(?:\s+(\d{4}))?", s, flags=re.IGNORECASE)
-    if m:
-        venue = m.group(1)
-        year = int(m.group(2)) if m.group(2) else None
-        _run_venue_guidelines_and_print(venue, year)
-        return {"tool_name": "venue_guidelines", "venue": venue, "year": year}
+    
 
-    if re.search(r"\bopen\s*review\b|\bopenreview\b", s, flags=re.IGNORECASE):
-        m2 = re.search(r"(?:open\s*review|openreview)\s*(?:for|about|on)?\s*(.*)$", s, flags=re.IGNORECASE)
-        query = (m2.group(1) if m2 and m2.group(1) else s).strip()
-        _run_openreview_and_print(query or s)
-        return {"tool_name": "openreview", "query": query}
+    
 
     if re.search(r"\$|\\\(|\\\[|\\begin\{equation\}|\\int|\\sum|\\frac|^\s*math\s*:\s*", s, flags=re.IGNORECASE):
         text = re.sub(r"^\s*math\s*:\s*", "", s, flags=re.IGNORECASE)
@@ -238,19 +230,21 @@ def route_and_maybe_run_tool(user: str) -> Optional[Dict[str, str]]:
         r"\bshow\s+me\s+(?:papers|research)\s+(?:on|about|in)\s+(.+)$",
         r"\bcan\s+you\s+find\s+(?:papers|research)\s+(?:on|about|in)\s+(.+)$",
     ]
-    for pat in arxiv_patterns:
+for pat in arxiv_patterns:
         m3 = re.search(pat, s, flags=re.IGNORECASE)
         if m3:
             topic = m3.group(1).strip()
             topic = re.sub(r"[.?!\s]+$", "", topic)
             if topic:
                 _run_arxiv_search_and_print(topic)
-                return {"tool_name": "arxiv_search", "topic": topic}
-
-    topic = _extract_topic_from_text(s)
+                return {"tool_name": "arxiv_search", "topic": str(topic)}
+    
+topic = _extract_topic_from_text(s)
     if topic:
         print(f"Mentor.tools: Detected topic → {topic}")
         _run_arxiv_search_and_print(topic)
         return {"tool_name": "arxiv_search", "topic": topic}
+    
+    return None
 
     return None

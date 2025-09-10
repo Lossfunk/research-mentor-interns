@@ -44,7 +44,7 @@ class _O3SearchTool(BaseTool):
         
         try:
             # Import the literature search functions
-            from ...mentor_tools import arxiv_search, openreview_fetch
+            from ...mentor_tools import arxiv_search
             
             # Perform searches
             search_results = {}
@@ -57,26 +57,15 @@ class _O3SearchTool(BaseTool):
             except Exception as e:
                 search_results["arxiv"] = {"papers": [], "note": f"arXiv search failed: {e}"}
             
-            # OpenReview search
-            try:
-                or_limit = int(inputs.get("or_limit", 8))
-                search_results["openreview"] = openreview_fetch(query=query, limit=or_limit)
-            except Exception as e:
-                search_results["openreview"] = {"threads": [], "note": f"OpenReview search failed: {e}"}
-            
+            # OpenReview search removed - legacy functionality deprecated
             # Combine results
             all_papers = []
             arxiv_papers = search_results["arxiv"].get("papers", [])
-            openreview_threads = search_results["openreview"].get("threads", [])
             
             # Add source tag to papers for identification
             for paper in arxiv_papers:
                 paper["source"] = "arxiv"
                 all_papers.append(paper)
-            
-            for thread in openreview_threads:
-                thread["source"] = "openreview"
-                all_papers.append(thread)
             
             return {
                 "results": all_papers,
@@ -84,8 +73,8 @@ class _O3SearchTool(BaseTool):
                 "search_details": search_results,
                 "total_papers": len(all_papers),
                 "arxiv_count": len(arxiv_papers),
-                "openreview_count": len(openreview_threads),
-                "note": "O3-powered literature search completed"
+                "openreview_count": 0,
+                "note": "O3-powered literature search completed (OpenReview deprecated)"
             }
             
         except Exception as e:

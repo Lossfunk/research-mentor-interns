@@ -227,8 +227,6 @@ class _LangChainSpecialistRouterWrapper:
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage  # type: ignore
         from .mentor_tools import (
             arxiv_search,
-            openreview_fetch,
-            venue_guidelines_get,
             math_ground,
             methodology_validate,
         )
@@ -245,10 +243,8 @@ class _LangChainSpecialistRouterWrapper:
             if msgs:
                 last = msgs[-1]
                 text = getattr(last, "content", None) or getattr(last, "text", None) or str(last)
-            if re.search(r"\bopenreview\b|\bopen\s*review\b", text, flags=re.IGNORECASE):
-                return "openreview"
-            if re.search(r"\bguidelines\b|\bICLR\b|\bNeurIPS\b|\bACL\b", text, flags=re.IGNORECASE):
-                return "venue"
+            
+            
             if re.search(r"\$|\\\(|\\\[|\\begin\{equation\}|\\int|\\sum|\\frac|\bnorm\b|\bO\(", text, flags=re.IGNORECASE):
                 return "math"
             if re.search(r"\bmethodology\b|\bexperiment\b|\bevaluation\s+plan\b|^\s*validate\s*:", text, flags=re.IGNORECASE):
@@ -263,43 +259,9 @@ class _LangChainSpecialistRouterWrapper:
             new_msgs = state["messages"] + [self._AIMessage(content=content)]
             return {"messages": new_msgs}
 
-        def node_venue(state: dict) -> dict:
-            last = state["messages"][-1]
-            txt = getattr(last, "content", None) or str(last)
-            m = re.search(r"([A-Za-z]{2,})\s*(\d{4})?", txt)
-            venue = m.group(1) if m else txt
-            year = int(m.group(2)) if (m and m.group(2)) else None
-            res = venue_guidelines_get(venue=venue, year=year)
-            g = (res or {}).get("guidelines", {})
-            urls = g.get("urls", {}) if isinstance(g, dict) else {}
-            parts = [f"Venue: {venue.upper()} {year or ''}".strip()]
-            if urls.get("guide"):
-                parts.append(f"Guide: {urls['guide']}")
-            if urls.get("template"):
-                parts.append(f"Template: {urls['template']}")
-            content = "\n".join(parts) if len(parts) > 1 else "No known URLs"
-            new_msgs = state["messages"] + [self._AIMessage(content=content)]
-            return {"messages": new_msgs}
+        
 
-        def node_openreview(state: dict) -> dict:
-            last = state["messages"][-1]
-            q = getattr(last, "content", None) or str(last)
-            res = openreview_fetch(query=q, limit=5)
-            threads = (res or {}).get("threads", [])
-            if not threads:
-                content = (res or {}).get("note", "No results")
-            else:
-                lines = []
-                for t in threads[:5]:
-                    title = t.get("paper_title")
-                    venue = t.get("venue")
-                    year = t.get("year")
-                    url = (t.get("urls") or {}).get("paper")
-                    suffix = f" ({venue} {year})" if (venue or year) else ""
-                    lines.append(f"- {title}{suffix} -> {url}")
-                content = "\n".join(lines)
-            new_msgs = state["messages"] + [self._AIMessage(content=content)]
-            return {"messages": new_msgs}
+        
 
         def node_math(state: dict) -> dict:
             last = state["messages"][-1]
@@ -351,8 +313,8 @@ class _LangChainSpecialistRouterWrapper:
 
         builder = StateGraph(state_schema=dict)  # type: ignore[arg-type]
         builder.add_node("chat", node_chat)
-        builder.add_node("venue", node_venue)
-        builder.add_node("openreview", node_openreview)
+        
+        
         builder.add_node("math", node_math)
         builder.add_node("methodology", node_method)
         builder.add_node("arxiv", node_arxiv)
@@ -366,10 +328,10 @@ class _LangChainSpecialistRouterWrapper:
         builder.add_conditional_edges(
             "chat",
             route_selector,
-            {"chat": "chat", "venue": "venue", "openreview": "openreview", "math": "math", "methodology": "methodology", "arxiv": "arxiv"},
+            {"chat": "chat", "math": "math", "methodology": "methodology", "arxiv": "arxiv"},
         )
         # All terminal nodes go to END
-        for node in ["venue", "openreview", "math", "methodology", "arxiv"]:
+        for node in ["math", "methodology", "arxiv"]:
             builder.add_edge(node, END)
         self._graph = builder.compile()
 
@@ -508,8 +470,6 @@ def get_langchain_tools() -> list[Any]:
     try:
         from .mentor_tools import (
             arxiv_search,
-            openreview_fetch,
-            venue_guidelines_get,
             math_ground,
             methodology_validate,
         )
@@ -592,36 +552,9 @@ def get_langchain_tools() -> list[Any]:
             lines.append(f"- {title} ({year}) -> {url}")
         return "\n".join(lines)
 
-    def _openreview_tool_fn(q: str) -> str:
-        print_info("Using tool: legacy_openreview_fetch")
-        res = openreview_fetch(query=q, limit=5)
-        _print_summary_and_sources(res if isinstance(res, dict) else {})
-        threads = (res or {}).get("threads", [])
-        if not threads:
-            return (res or {}).get("note", "No results")
-        lines = []
-        for t in threads[:5]:
-            title = t.get("paper_title")
-            venue = t.get("venue")
-            year = t.get("year")
-            url = (t.get("urls") or {}).get("paper")
-            suffix = f" ({venue} {year})" if (venue or year) else ""
-            lines.append(f"- {title}{suffix} -> {url}")
-        return "\n".join(lines)
+    
 
-    def _venue_tool_fn(text: str) -> str:
-        m = re.search(r"([A-Za-z]{2,})\s*(\d{4})?", text)
-        venue = m.group(1) if m else text
-        year = int(m.group(2)) if (m and m.group(2)) else None
-        res = venue_guidelines_get(venue=venue, year=year)
-        g = (res or {}).get("guidelines", {})
-        urls = g.get("urls", {}) if isinstance(g, dict) else {}
-        parts = [f"Venue: {venue.upper()} {year or ''}".strip()]
-        if urls.get("guide"):
-            parts.append(f"Guide: {urls['guide']}")
-        if urls.get("template"):
-            parts.append(f"Template: {urls['template']}")
-        return "\n".join(parts) if len(parts) > 1 else "No known URLs"
+    
 
     def _math_tool_fn(text: str) -> str:
         res = math_ground(text_or_math=text, options={})
@@ -761,23 +694,8 @@ def get_langchain_tools() -> list[Any]:
                 "Input: research topic. Returns key papers with links."
             ),
         ),
-        Tool(
-            name="openreview_fetch",
-            func=_openreview_tool_fn,
-            description=(
-                "Search OpenReview for academic papers and reviews from top-tier conferences. "
-                "Use this to find papers from venues like NeurIPS, ICLR, ICML, etc. "
-                "Input: research topic, keywords, or venue name. "
-                "Returns: papers with reviews, venues, and forum links."
-            ),
-        ),
-        Tool(
-            name="venue_guidelines_get",
-            func=_venue_tool_fn,
-            description=(
-                "Get likely author-guideline URLs for a venue/year. Input: 'ICLR 2025' or 'NeurIPS'."
-            ),
-        ),
+        
+        
         Tool(
             name="math_ground",
             func=_math_tool_fn,
