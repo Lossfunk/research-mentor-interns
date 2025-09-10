@@ -19,13 +19,10 @@ def _run_arxiv_search_and_print(query: str) -> None:
         url = p.get("url")
         print(f"- {title} ({year}) → {url}")
 
-
-
-
-
-
-    if not urls.get("guide") and not urls.get("template"):
-        print("- No known URLs. Try checking the venue website.")
+    # The following block seems out of place and references 'urls' which is undefined.
+    # Commenting it out to fix indentation and undefined variable issues.
+    # if not urls.get("guide") and not urls.get("template"):
+    #     print("- No known URLs. Try checking the venue website.")
 
 
 def _run_math_ground_and_print(text: str) -> None:
@@ -205,10 +202,6 @@ def route_and_maybe_run_tool(user: str) -> Optional[Dict[str, str]]:
             _run_guidelines_and_print(s, topic)
             return {"tool_name": "research_guidelines", "query": topic}
 
-    
-
-    
-
     if re.search(r"\$|\\\(|\\\[|\\begin\{equation\}|\\int|\\sum|\\frac|^\s*math\s*:\s*", s, flags=re.IGNORECASE):
         text = re.sub(r"^\s*math\s*:\s*", "", s, flags=re.IGNORECASE)
         _run_math_ground_and_print(text or s)
@@ -230,7 +223,7 @@ def route_and_maybe_run_tool(user: str) -> Optional[Dict[str, str]]:
         r"\bshow\s+me\s+(?:papers|research)\s+(?:on|about|in)\s+(.+)$",
         r"\bcan\s+you\s+find\s+(?:papers|research)\s+(?:on|about|in)\s+(.+)$",
     ]
-for pat in arxiv_patterns:
+    for pat in arxiv_patterns:
         m3 = re.search(pat, s, flags=re.IGNORECASE)
         if m3:
             topic = m3.group(1).strip()
@@ -239,12 +232,10 @@ for pat in arxiv_patterns:
                 _run_arxiv_search_and_print(topic)
                 return {"tool_name": "arxiv_search", "topic": str(topic)}
     
-topic = _extract_topic_from_text(s)
+    topic = _extract_topic_from_text(s)
     if topic:
         print(f"Mentor.tools: Detected topic → {topic}")
         _run_arxiv_search_and_print(topic)
         return {"tool_name": "arxiv_search", "topic": topic}
     
-    return None
-
     return None
