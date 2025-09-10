@@ -129,24 +129,46 @@ class _LangChainReActAgentWrapper:
         ]
 
     def print_response(self, user_text: str, stream: bool = True) -> None:  # noqa: ARG002
-        # For simplicity, invoke once and print final model response (tool steps are internal)
+        # Stream step-wise when available to avoid sudden full output
         try:
             self._current_user_input = user_text
-            result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
-            messages = result.get("messages", []) if isinstance(result, dict) else []
             content = ""
-            if messages:
-                last_msg = messages[-1]
-                content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
-            
-            # Extract tool calls from the result
-            tool_calls = self._extract_tool_calls(result)
-            
-            # Log the conversation turn
+            if stream and hasattr(self._agent_executor, "stream"):
+                start_streaming_response("Mentor (ReAct Agent)")
+                try:
+                    # Stream agent values and print incremental deltas of the last AI message
+                    for step in self._agent_executor.stream({"messages": self._build_messages(user_text)}, stream_mode="values"):  # type: ignore[arg-type]
+                        try:
+                            msgs = step.get("messages", []) if isinstance(step, dict) else []
+                            if msgs:
+                                last_msg = msgs[-1]
+                                latest = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or ""
+                                if isinstance(latest, str) and len(latest) > len(content):
+                                    delta = latest[len(content):]
+                                    if delta:
+                                        print_streaming_chunk(delta)
+                                    content = latest
+                        except Exception:
+                            continue
+                finally:
+                    end_streaming_response()
+                # Best-effort tool call extraction is not easily available during streaming; do once at end
+                result = {"messages": [{"content": content}]}
+                tool_calls = []
+            else:
+                result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
+                messages = result.get("messages", []) if isinstance(result, dict) else []
+                if messages:
+                    last_msg = messages[-1]
+                    content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
+                tool_calls = self._extract_tool_calls(result)
+
+            # Log the conversation turn (after content determined)
             if self._chat_logger:
                 self._chat_logger.add_turn(user_text, tool_calls, content)
-            
-            print_formatted_response(content, "Mentor (ReAct Agent)")
+
+            if not stream:
+                print_formatted_response(content, "Mentor (ReAct Agent)")
         except Exception as exc:  # noqa: BLE001
             print_error(f"Mentor response failed: {exc}")
             
