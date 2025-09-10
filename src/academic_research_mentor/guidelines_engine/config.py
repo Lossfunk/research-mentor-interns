@@ -25,13 +25,17 @@ class GuidelinesConfig:
         self.guidelines_path = self._get_guidelines_path()
     
     def _get_guidelines_mode(self) -> GuidelinesMode:
-        """Get guidelines mode from environment."""
-        mode_str = os.getenv('ARM_GUIDELINES_MODE', 'static').lower()
+        """Get guidelines mode from environment.
+
+        Default to 'dynamic' so fresh clones prefer the Guidelines Tool
+        instead of static unified_guidelines.json injection.
+        """
+        mode_str = os.getenv('ARM_GUIDELINES_MODE', 'dynamic').lower()
         try:
             return GuidelinesMode(mode_str)
         except ValueError:
-            # Default to static if invalid mode specified
-            return GuidelinesMode.STATIC
+            # Fall back to dynamic on invalid values
+            return GuidelinesMode.DYNAMIC
     
     def _get_max_guidelines(self) -> Optional[int]:
         """Get maximum guidelines count from environment."""

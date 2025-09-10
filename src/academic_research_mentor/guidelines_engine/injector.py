@@ -31,6 +31,14 @@ class GuidelinesInjector:
         """
         if not self.config.is_enabled:
             return base_prompt
+        # Dynamic mode: do not load static JSON; optionally add a small hint
+        if self.config.is_dynamic_mode:
+            hint = (
+                "When the user asks for research mentorship, methodology, problem selection, "
+                "or research taste guidance, prefer calling the research_guidelines tool to gather "
+                "evidence-based guidance before answering."
+            )
+            return f"{base_prompt}\n\n{hint}"
         
         guidelines_section = self.get_guidelines_section()
         if not guidelines_section:
@@ -56,6 +64,9 @@ class GuidelinesInjector:
             Formatted guidelines text ready for injection
         """
         if not self.config.is_enabled:
+            return ""
+        if self.config.is_dynamic_mode:
+            # No static section in dynamic mode; tool will be used at runtime
             return ""
         
         # Use cached version if available
@@ -162,13 +173,16 @@ class GuidelinesInjector:
             'token_estimate': 0
         }
         
-        if self.config.is_enabled:
+        if self.config.is_enabled and not self.config.is_dynamic_mode:
             try:
                 guidelines = self.loader.load_guidelines()
                 stats['guidelines_stats'] = self.loader.get_stats()
                 stats['token_estimate'] = self.get_token_estimate()
             except Exception as e:
                 stats['error'] = str(e)
+        elif self.config.is_dynamic_mode:
+            stats['guidelines_stats'] = {"tool_backed": True}
+            stats['token_estimate'] = 0
         
         return stats
 
