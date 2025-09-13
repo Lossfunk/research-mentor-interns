@@ -8,6 +8,10 @@ from ..router import route_and_maybe_run_tool
 from ..literature_review import build_research_context
 from ..chat_logger import ChatLogger
 from .session import cleanup_and_save_session
+"""REPL with optional context enrichment from attachments and tools."""
+
+
+## get_langchain_tools is defined in runtime/tools_wrappers.py; no duplication here.
 
 
 def online_repl(agent: Any, loaded_variant: str) -> None:
@@ -121,6 +125,17 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                                             suffix = f" ({year})" if year else ""
                                             link = f" -> {url}" if url else ""
                                             lines.append(f"- {title}{suffix}{link}")
+                                        # Map 1-2 anchors explicitly into advice
+                                        role = "novelty positioning" if ("novel" in lower_q or "novelty" in lower_q) else "methodology grounding"
+                                        lines.append("")
+                                        lines.append("Literature anchors (map to advice):")
+                                        for i, it in enumerate(items[:2], 1):
+                                            t = it.get("title") or it.get("paper_title") or "result"
+                                            y = it.get("year") or it.get("published") or ""
+                                            u = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
+                                            ys = f" ({y})" if y else ""
+                                            link = f" -> {u}" if u else ""
+                                            lines.append(f"- Anchor {i}: {t}{ys}{link} – Use for {role} in your final advice")
                                 except Exception:
                                     pass
                             # Optional: add experiment plan preview
