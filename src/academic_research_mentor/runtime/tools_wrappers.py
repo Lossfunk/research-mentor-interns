@@ -10,6 +10,7 @@ from .tool_impls import (
     math_tool_fn,
     method_tool_fn,
     guidelines_tool_fn,
+    experiment_planner_tool_fn,
 )
 from ..attachments import has_attachments, search as attachments_search
 
@@ -44,6 +45,14 @@ def get_langchain_tools() -> list[Any]:
             description=(
                 "Literature search using O3 reasoning across arXiv/OpenReview. Use AFTER attachments_search to "
                 "contextualize advice with recent work. Input: research topic. Output: key papers with links."
+            ),
+        ),
+        Tool(
+            name="experiment_planner",
+            func=wrap(experiment_planner_tool_fn),
+            description=(
+                "Propose 3 concrete, falsifiable experiments grounded in attached snippets. "
+                "Use AFTER attachments_search; returns numbered experiments with hypothesis, variables, metrics, expected outcome, and [file:page] anchors."
             ),
         ),
         Tool(
