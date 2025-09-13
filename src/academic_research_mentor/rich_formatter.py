@@ -162,6 +162,33 @@ class RichFormatter:
         else:
             self.console.print(text)
     
+    def print_section(self, content: str, title: str, border_style: str = "blue") -> None:
+        """Print a titled panel section with consistent styling.
+        
+        Args:
+            content: Content to display
+            title: Section title
+            border_style: Rich style for panel border
+        """
+        if not content.strip():
+            return
+        try:
+            if self._has_markdown_elements(content):
+                body = Markdown(self._process_markdown_content(content))
+            else:
+                # Apply basic URL highlighting even in sections
+                text = Text(content)
+                url_pattern = r'https?://[^\s]+'
+                for match in re.finditer(url_pattern, content):
+                    start, end = match.span()
+                    text.stylize("blue underline", start, end)
+                body = text
+            panel = Panel(body, title=f"[bold]{title}[/bold]", border_style=border_style)
+            self.console.print(panel)
+        except Exception:
+            # Graceful fallback
+            self.console.print(f"[bold]{title}[/bold]\n{content}")
+
     def _process_markdown_content(self, content: str) -> str:
         """Process markdown content to enhance certain elements.
         
@@ -254,3 +281,12 @@ def print_success(message: str) -> None:
         message: Success message to display
     """
     get_formatter().print_success(message)
+
+
+def print_agent_reasoning(content: str) -> None:
+    """Print content as an 'Agent's reasoning' section.
+    
+    Args:
+        content: Reasoning or tool traces to show as internal context.
+    """
+    get_formatter().print_section(content, "Agent's reasoning", border_style="magenta")

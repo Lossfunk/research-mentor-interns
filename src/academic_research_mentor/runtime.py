@@ -11,6 +11,7 @@ from .rich_formatter import (
     start_streaming_response,
     end_streaming_response,
     print_info,
+    print_agent_reasoning,
 )
 
 
@@ -115,6 +116,9 @@ class _LangChainReActAgentWrapper:
         self._agent_executor = create_react_agent(llm, tools)
         self._chat_logger = None
         self._current_user_input = None
+        # Delimiters for hiding internal/tool reasoning from the response display
+        self._internal_begin = "<<<AGENT_INTERNAL_BEGIN>>>"
+        self._internal_end = "<<<AGENT_INTERNAL_END>>>"
         
     def set_chat_logger(self, chat_logger: Any) -> None:
         """Set the chat logger for recording conversations."""
@@ -129,46 +133,24 @@ class _LangChainReActAgentWrapper:
         ]
 
     def print_response(self, user_text: str, stream: bool = True) -> None:  # noqa: ARG002
-        # Stream step-wise when available to avoid sudden full output
+        # Render in strict order: (1) Agent's reasoning (via tool panels), then (2) Agent's response
         try:
             self._current_user_input = user_text
             content = ""
-            if stream and hasattr(self._agent_executor, "stream"):
-                start_streaming_response("Mentor (ReAct Agent)")
-                try:
-                    # Stream agent values and print incremental deltas of the last AI message
-                    for step in self._agent_executor.stream({"messages": self._build_messages(user_text)}, stream_mode="values"):  # type: ignore[arg-type]
-                        try:
-                            msgs = step.get("messages", []) if isinstance(step, dict) else []
-                            if msgs:
-                                last_msg = msgs[-1]
-                                latest = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or ""
-                                if isinstance(latest, str) and len(latest) > len(content):
-                                    delta = latest[len(content):]
-                                    if delta:
-                                        print_streaming_chunk(delta)
-                                    content = latest
-                        except Exception:
-                            continue
-                finally:
-                    end_streaming_response()
-                # Best-effort tool call extraction is not easily available during streaming; do once at end
-                result = {"messages": [{"content": content}]}
-                tool_calls = []
-            else:
-                result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
-                messages = result.get("messages", []) if isinstance(result, dict) else []
-                if messages:
-                    last_msg = messages[-1]
-                    content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
-                tool_calls = self._extract_tool_calls(result)
+            # Invoke once synchronously so tools can print their reasoning panels first
+            result = self._agent_executor.invoke({"messages": self._build_messages(user_text)})
+            messages = result.get("messages", []) if isinstance(result, dict) else []
+            if messages:
+                last_msg = messages[-1]
+                content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
+            tool_calls = self._extract_tool_calls(result)
 
             # Log the conversation turn (after content determined)
             if self._chat_logger:
-                self._chat_logger.add_turn(user_text, tool_calls, content)
+                self._chat_logger.add_turn(user_text, tool_calls, self._clean_for_display(content, user_text))
 
-            if not stream:
-                print_formatted_response(content, "Mentor (ReAct Agent)")
+            # Always print the final, cleaned response once
+            print_formatted_response(self._clean_for_display(content, user_text), "Agent's response")
         except Exception as exc:  # noqa: BLE001
             print_error(f"Mentor response failed: {exc}")
             
@@ -213,7 +195,34 @@ class _LangChainReActAgentWrapper:
         if messages:
             last_msg = messages[-1]
             content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
-        return _Reply(content)
+        return _Reply(self._clean_for_display(content, user_text))
+
+    def _clean_for_display(self, content: str, user_text: Optional[str]) -> str:
+        """Strip internal reasoning blocks and remove user-echo prefixes for display.
+        
+        This keeps the TUI "Agent's response" focused on the final answer.
+        """
+        try:
+            text = str(content or "")
+            if not text:
+                return text
+            # Remove internal blocks
+            pattern = re.compile(re.escape(self._internal_begin) + r"[\s\S]*?" + re.escape(self._internal_end))
+            text = re.sub(pattern, "", text)
+            # Remove user echo at the beginning (case-insensitive, whitespace tolerant)
+            if user_text:
+                ut = str(user_text).strip()
+                if ut:
+                    # Simple prefix strip if present
+                    if text.lstrip().lower().startswith(ut.lower()):
+                        # Preserve original leading whitespace before user echo
+                        leading = len(text) - len(text.lstrip())
+                        text = text[:leading] + text.lstrip()[len(ut):]
+            # Collapse excessive blank lines
+            text = re.sub(r"\n{3,}", "\n\n", text)
+            return text
+        except Exception:
+            return str(content or "")
 
 
 class _LangChainSpecialistRouterWrapper:
@@ -513,10 +522,13 @@ def get_langchain_tools() -> list[Any]:
                     src = g.get("source_domain") or g.get("search_query") or "guideline"
                     sources.append(src)
                     summary_lines.append(f"- {src}")
-            if summary_lines:
-                print_info("Found:\n" + "\n".join(summary_lines[:3]))
-            if sources:
-                print_info("Sources: " + ", ".join(sources[:5]))
+            if summary_lines or sources:
+                parts: list[str] = []
+                if summary_lines:
+                    parts.append("Found:\n" + "\n".join(summary_lines[:3]))
+                if sources:
+                    parts.append("Sources: " + ", ".join(sources[:5]))
+                print_agent_reasoning("\n".join(parts))
         except Exception:
             # Transparency is best-effort; never fail the interaction
             pass
@@ -527,9 +539,9 @@ def get_langchain_tools() -> list[Any]:
             _auto()
             tool = _get(tool_name)
             if tool is None:
-                print_info(f"Using tool: {tool_name} (unavailable)")
+                print_agent_reasoning(f"Using tool: {tool_name} (unavailable)")
                 return {"note": f"tool {tool_name} unavailable"}
-            print_info(f"Using tool: {tool_name}")
+            print_agent_reasoning(f"Using tool: {tool_name}")
             result = tool.execute(payload, {"goal": payload.get("query", "")})
             _print_summary_and_sources(result if isinstance(result, dict) else {})
             return result if isinstance(result, dict) else {"note": "non-dict result"}
@@ -538,7 +550,7 @@ def get_langchain_tools() -> list[Any]:
 
     def _arxiv_tool_fn(q: str) -> str:
         # Legacy direct call (no registry). Add transparency prints.
-        print_info("Using tool: legacy_arxiv_search")
+        print_agent_reasoning("Using tool: legacy_arxiv_search")
         res = arxiv_search(query=q, from_year=None, limit=5)
         _print_summary_and_sources(res if isinstance(res, dict) else {})
         papers = (res or {}).get("papers", [])
@@ -632,7 +644,11 @@ def get_langchain_tools() -> list[Any]:
                     for i, source in enumerate(sources, 1):
                         formatted_lines.append(f"{i}. {source}")
                 
-                return "\n".join(formatted_lines)
+                reasoning_block = "\n".join(formatted_lines)
+                # Print as Agent's reasoning panel for TUI differentiation
+                print_agent_reasoning(reasoning_block)
+                # Return as internal block so it won't show in the "Agent's response"
+                return f"{self._internal_begin}\n{reasoning_block}\n{self._internal_end}"
             else:
                 return "Guidelines search temporarily unavailable. Please try again later."
                 
@@ -654,7 +670,9 @@ def get_langchain_tools() -> list[Any]:
             suffix = f" ({year})" if year else ""
             link = f" -> {url}" if url else ""
             lines.append(f"- {title}{suffix}{link}")
-        return "\n".join(lines)
+        reasoning = "\n".join(["Top literature results:"] + lines)
+        print_agent_reasoning(reasoning)
+        return f"{self._internal_begin}\n{reasoning}\n{self._internal_end}"
 
     def _searchthearxiv_tool_fn(q: str) -> str:
         """Registry-backed semantic arXiv search (searchthearxiv.com) with transparency printing."""
@@ -671,7 +689,9 @@ def get_langchain_tools() -> list[Any]:
             suffix = f" ({year})" if year else ""
             link = f" -> {url}" if url else ""
             lines.append(f"- {title}{suffix}{link}")
-        return "\n".join(lines)
+        reasoning = "\n".join(["Semantic arXiv results:"] + lines)
+        print_agent_reasoning(reasoning)
+        return f"{self._internal_begin}\n{reasoning}\n{self._internal_end}"
 
     tools: list[Any] = [
         Tool(
