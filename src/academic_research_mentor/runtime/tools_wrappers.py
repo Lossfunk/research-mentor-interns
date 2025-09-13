@@ -40,11 +40,11 @@ def get_langchain_tools() -> list[Any]:
             ),
         ),
         Tool(
-            name="literature_search",
-            func=wrap(o3_search_tool_fn),
+            name="mentorship_guidelines",
+            func=wrap(guidelines_tool_fn),
             description=(
-                "Literature search using O3 reasoning across arXiv/OpenReview. Use AFTER attachments_search to "
-                "contextualize advice with recent work. Input: research topic. Output: key papers with links."
+                "Mentorship guidelines from curated sources. For novelty/methodology/experiments questions, use this "
+                "IMMEDIATELY AFTER attachments_search to establish best-practice principles BEFORE any literature search."
             ),
         ),
         Tool(
@@ -52,7 +52,7 @@ def get_langchain_tools() -> list[Any]:
             func=wrap(experiment_planner_tool_fn),
             description=(
                 "Propose 3 concrete, falsifiable experiments grounded in attached snippets. "
-                "Use AFTER attachments_search; returns numbered experiments with hypothesis, variables, metrics, expected outcome, and [file:page] anchors."
+                "Use AFTER attachments_search (and optionally mentorship_guidelines); returns numbered experiments with hypothesis, variables, metrics, expected outcome, and [file:page] anchors."
             ),
         ),
         Tool(
@@ -67,14 +67,6 @@ def get_langchain_tools() -> list[Any]:
             func=wrap(method_tool_fn),
             description=(
                 "Validate an experiment plan for risks/controls/ablations/reproducibility gaps."
-            ),
-        ),
-        Tool(
-            name="mentorship_guidelines",
-            func=wrap(guidelines_tool_fn),
-            description=(
-                "Mentorship guidelines from curated sources. Use AFTER attachments_search to translate grounded findings "
-                "into best-practice advice (problem selection, novelty, methodology, publication). Input: mentorship question."
             ),
         ),
         # Tool(

@@ -110,34 +110,10 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                                                 lines.append(ln.strip())
                                 except Exception:
                                     pass
-                            # Optional: add brief literature context via o3_search
+                            # Defer literature review to the agent; do not call o3_search here
                             if wants_literature:
-                                try:
-                                    o3 = _tool_call("o3_search", {"query": user, "limit": 5})
-                                    items = (o3.get("results") if isinstance(o3, dict) else []) or []
-                                    if items:
-                                        lines.append("")
-                                        lines.append("Literature context (top):")
-                                        for it in items[:3]:
-                                            title = it.get("title") or it.get("paper_title") or "result"
-                                            year = it.get("year") or it.get("published") or ""
-                                            url = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
-                                            suffix = f" ({year})" if year else ""
-                                            link = f" -> {url}" if url else ""
-                                            lines.append(f"- {title}{suffix}{link}")
-                                        # Map 1-2 anchors explicitly into advice
-                                        role = "novelty positioning" if ("novel" in lower_q or "novelty" in lower_q) else "methodology grounding"
-                                        lines.append("")
-                                        lines.append("Literature anchors (map to advice):")
-                                        for i, it in enumerate(items[:2], 1):
-                                            t = it.get("title") or it.get("paper_title") or "result"
-                                            y = it.get("year") or it.get("published") or ""
-                                            u = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
-                                            ys = f" ({y})" if y else ""
-                                            link = f" -> {u}" if u else ""
-                                            lines.append(f"- Anchor {i}: {t}{ys}{link} – Use for {role} in your final advice")
-                                except Exception:
-                                    pass
+                                lines.append("")
+                                lines.append("Note: After grounding and mentorship guidance, consult literature_search to add 1–2 anchors.")
                             # Optional: add experiment plan preview
                             if wants_experiments:
                                 try:

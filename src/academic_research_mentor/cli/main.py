@@ -99,8 +99,8 @@ def main() -> None:
         "Use the selected core prompt variant only; never combine prompts. "
         "Default to conversational answers; call tools only when they would materially change advice. "
         "When user-attached PDFs are present, FIRST use attachments_search to ground your answer with [file:page] citations. "
-        "If the user asks about novelty, experiments, methodology, or related work: ALSO consult research_guidelines and literature_search after grounding, and in your final answer include: "
-        "(1) at least three concrete, falsifiable experiments and (2) one to two literature anchors (titles with links). "
+        "For novelty/experiments/methodology/related-work: AFTER grounding, consult mentorship_guidelines BEFORE any literature_search; "
+        "then, if helpful, run literature_search. In your final answer include (1) at least three concrete, falsifiable experiments and (2) one to two literature anchors (titles with links). "
         "Always keep claims grounded in attached snippets with [file:page] citations."
     )
     effective_instructions = f"{runtime_prelude}\n\n{instructions}"
@@ -127,13 +127,7 @@ def main() -> None:
     except Exception:
         pass
 
-    # Agent
-    agent, offline_reason = build_agent(effective_instructions)
-    if agent is None:
-        print_error(offline_reason or "Model initialization failed. Set one of the API keys in your .env (OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or MISTRAL_API_KEY). Then re-run: uv run academic-research-mentor --check-env")
-        return
-
-    # Attach PDFs if provided
+    # Attach PDFs if provided (do this BEFORE building the agent so tools can reflect attachment presence)
     try:
         pdfs = getattr(args, 'attach_pdf', None)
         if pdfs:
@@ -152,6 +146,12 @@ def main() -> None:
             print_info(msg)
     except Exception:
         pass
+
+    # Agent
+    agent, offline_reason = build_agent(effective_instructions)
+    if agent is None:
+        print_error(offline_reason or "Model initialization failed. Set one of the API keys in your .env (OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or MISTRAL_API_KEY). Then re-run: uv run academic-research-mentor --check-env")
+        return
 
     # REPL
     online_repl(agent, loaded_variant)
