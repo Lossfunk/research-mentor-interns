@@ -58,8 +58,28 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                 # For ReAct/default mode, enrich the user input with attached PDF context if available
                 try:
                     from ..attachments import has_attachments as _has_att, search as _att_search
-                    from ..runtime.tool_impls import guidelines_tool_fn as _guidelines_tool  # type: ignore
+                    from ..runtime.tool_impls import (
+                        guidelines_tool_fn as _guidelines_tool,  # type: ignore
+                        experiment_planner_tool_fn as _exp_plan,  # type: ignore
+                    )
                     from ..runtime.tool_helpers import registry_tool_call as _tool_call
+                    # Simple contextual triggers
+                    lower_q = user.lower()
+                    mentorship_triggers = [
+                        "novel", "novelty", "methodology", "publish", "publication",
+                        "problem selection", "career", "taste", "mentor", "guideline",
+                    ]
+                    literature_triggers = [
+                        "related work", "literature", "papers", "sota", "baseline",
+                        "survey", "prior work",
+                    ]
+                    experiment_triggers = [
+                        "experiment", "experiments", "hypothesis", "ablation",
+                        "evaluation plan", "setup", "metrics",
+                    ]
+                    wants_guidelines = any(k in lower_q for k in mentorship_triggers)
+                    wants_literature = any(k in lower_q for k in literature_triggers)
+                    wants_experiments = any(k in lower_q for k in experiment_triggers)
                     if _has_attachments := _has_att():
                         results = _att_search(user, k=6)
                         if results:
@@ -73,8 +93,8 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                                 if len(text) > 220:
                                     text = text[:220] + "…"
                                 lines.append(f"- [{file}:{page}] {text}")
-                            # Optional: add mentorship guidelines context for mentorship-like queries
-                            if any(k in user.lower() for k in ["novel", "novelty", "research question", "methodology", "publish", "worth pursuing", "problem selection", "career", "taste"]):
+                            # Optional: add mentorship guidelines context
+                            if wants_guidelines:
                                 try:
                                     gl = _guidelines_tool(user) or ""
                                     gl = str(gl).strip()
@@ -87,21 +107,35 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                                 except Exception:
                                     pass
                             # Optional: add brief literature context via o3_search
-                            try:
-                                o3 = _tool_call("o3_search", {"query": user, "limit": 5})
-                                items = (o3.get("results") if isinstance(o3, dict) else []) or []
-                                if items:
-                                    lines.append("")
-                                    lines.append("Literature context (top):")
-                                    for it in items[:3]:
-                                        title = it.get("title") or it.get("paper_title") or "result"
-                                        year = it.get("year") or it.get("published") or ""
-                                        url = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
-                                        suffix = f" ({year})" if year else ""
-                                        link = f" -> {url}" if url else ""
-                                        lines.append(f"- {title}{suffix}{link}")
-                            except Exception:
-                                pass
+                            if wants_literature:
+                                try:
+                                    o3 = _tool_call("o3_search", {"query": user, "limit": 5})
+                                    items = (o3.get("results") if isinstance(o3, dict) else []) or []
+                                    if items:
+                                        lines.append("")
+                                        lines.append("Literature context (top):")
+                                        for it in items[:3]:
+                                            title = it.get("title") or it.get("paper_title") or "result"
+                                            year = it.get("year") or it.get("published") or ""
+                                            url = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
+                                            suffix = f" ({year})" if year else ""
+                                            link = f" -> {url}" if url else ""
+                                            lines.append(f"- {title}{suffix}{link}")
+                                except Exception:
+                                    pass
+                            # Optional: add experiment plan preview
+                            if wants_experiments:
+                                try:
+                                    plan = _exp_plan(user) or ""
+                                    plan = str(plan).strip()
+                                    if plan:
+                                        lines.append("")
+                                        lines.append("Experiment plan (preview):")
+                                        for ln in plan.splitlines()[:12]:
+                                            if ln.strip():
+                                                lines.append(ln.strip())
+                                except Exception:
+                                    pass
                             context_block = "\n".join(lines)
                             enhanced_user_input = (
                                 f"{context_block}\n\n"

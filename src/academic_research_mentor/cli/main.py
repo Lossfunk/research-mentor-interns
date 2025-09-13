@@ -99,8 +99,9 @@ def main() -> None:
         "Use the selected core prompt variant only; never combine prompts. "
         "Default to conversational answers; call tools only when they would materially change advice. "
         "When user-attached PDFs are present, FIRST use attachments_search to ground your answer with [file:page] citations. "
-        "After grounding, if mentorship guidance would benefit from broader best-practice principles or literature, ALSO consult research_guidelines and o3_search. "
-        "Cite attachments as [file:page] and summarize guideline sources succinctly."
+        "If the user asks about novelty, experiments, methodology, or related work: ALSO consult research_guidelines and literature_search after grounding, and in your final answer include: "
+        "(1) at least three concrete, falsifiable experiments and (2) one to two literature anchors (titles with links). "
+        "Always keep claims grounded in attached snippets with [file:page] citations."
     )
     effective_instructions = f"{runtime_prelude}\n\n{instructions}"
 
