@@ -6,7 +6,7 @@ from ..rich_formatter import print_agent_reasoning
 from .tool_impls import (
     arxiv_tool_fn,
     o3_search_tool_fn,
-    searchthearxiv_tool_fn,
+    # searchthearxiv_tool_fn,  # Disabled - tool not working properly
     math_tool_fn,
     method_tool_fn,
     guidelines_tool_fn,
@@ -68,14 +68,14 @@ def get_langchain_tools() -> list[Any]:
                 "into best-practice advice (problem selection, novelty, methodology, publication). Input: mentorship question."
             ),
         ),
-        Tool(
-            name="searchthearxiv_search",
-            func=wrap(searchthearxiv_tool_fn),
-            description=(
-                "Semantic arXiv search via searchthearxiv.com. Use for natural language queries. "
-                "Includes transparency logs and sources. Input: research query."
-            ),
-        ),
+        # Tool(
+        #     name="searchthearxiv_search",
+        #     func=wrap(searchthearxiv_tool_fn),
+        #     description=(
+        #         "Semantic arXiv search via searchthearxiv.com. Use for natural language queries. "
+        #         "Includes transparency logs and sources. Input: research query."
+        #     ),
+        # ),
     ]
     # Always add attachments_search tool (it handles empty attachments gracefully)
     def _attachments_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
