@@ -40,7 +40,7 @@ def get_langchain_tools() -> list[Any]:
             ),
         ),
         Tool(
-            name="o3_search",
+            name="literature_search",
             func=wrap(o3_search_tool_fn),
             description=(
                 "Literature search using O3 reasoning across arXiv/OpenReview. Use AFTER attachments_search to "
@@ -48,7 +48,7 @@ def get_langchain_tools() -> list[Any]:
             ),
         ),
         Tool(
-            name="experiment_planner",
+            name="experiments_plan",
             func=wrap(experiment_planner_tool_fn),
             description=(
                 "Propose 3 concrete, falsifiable experiments grounded in attached snippets. "
@@ -70,7 +70,7 @@ def get_langchain_tools() -> list[Any]:
             ),
         ),
         Tool(
-            name="research_guidelines",
+            name="mentorship_guidelines",
             func=wrap(guidelines_tool_fn),
             description=(
                 "Mentorship guidelines from curated sources. Use AFTER attachments_search to translate grounded findings "
@@ -92,17 +92,23 @@ def get_langchain_tools() -> list[Any]:
         print_agent_reasoning("Using tool: attachments_search")
         if not has_attachments():
             return f"{begin}No attachments loaded. Use --attach-pdf to add documents.{end}" if begin or end else "No attachments loaded. Use --attach-pdf to add documents."
-        results = attachments_search(q, k=6)
+        # ResponseFormat control via inline directive
+        q_lower = (q or "").lower()
+        detailed = "format:detailed" in q_lower or "response:detailed" in q_lower
+        clean_q = q.replace("format:detailed", "").replace("response:detailed", "").strip()
+        results = attachments_search(clean_q, k=6)
         if not results:
             return f"{begin}No relevant snippets found in attached PDFs{end}" if begin or end else "No relevant snippets found in attached PDFs"
         lines: list[str] = ["Context snippets from attachments:"]
         for r in results[:6]:
             file = r.get("file", "file.pdf")
             page = r.get("page", 1)
-            text = (r.get("text", "") or "").strip().replace("\n", " ")
-            if len(text) > 220:
+            snippet = (r.get("snippet") or r.get("text") or "").strip().replace("\n", " ")
+            text = snippet if not detailed else (r.get("text") or snippet)
+            if not detailed and len(text) > 220:
                 text = text[:220] + "…"
-            lines.append(f"- [{file}:{page}] {text}")
+            anchor = r.get("anchor") or f"{file}#page={page}"
+            lines.append(f"- [{file}:{page}] {text} (anchor: {anchor})")
         reasoning = "\n".join(lines)
         return f"{begin}{reasoning}{end}" if begin or end else reasoning
 
@@ -115,7 +121,8 @@ def get_langchain_tools() -> list[Any]:
             description=(
                 "GROUNDING FIRST: When user-attached PDFs are present, use this FIRST to retrieve relevant "
                 "snippets and ground your answer with [file:page] citations. Only use external tools if the "
-                "attached context is insufficient. Input: research question. Output: snippets with citations."
+                "attached context is insufficient. Input: research question. Output: snippets with citations. "
+                "Add 'format:detailed' in your query for full passages; default is concise snippets."
             ),
         ),
     )

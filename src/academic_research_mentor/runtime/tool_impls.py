@@ -162,14 +162,17 @@ def experiment_planner_tool_fn(q: str, *, internal_delimiters: tuple[str, str] |
         from ..attachments import has_attachments, search as att_search
         if not has_attachments():
             return f"{begin}No attachments loaded; cannot generate grounded experiments{end}" if begin or end else "No attachments loaded; cannot generate grounded experiments"
-        snippets = att_search(q, k=6)
+        detailed = "format:detailed" in (q or "").lower()
+        clean_q = q.replace("format:detailed", "").replace("response:detailed", "").strip()
+        snippets = att_search(clean_q, k=6)
         if not snippets:
             return f"{begin}No relevant snippets found in attachments{end}" if begin or end else "No relevant snippets found in attachments"
         lines: list[str] = ["Grounded experiment plan (3 items):"]
         for i, s in enumerate(snippets[:3], 1):
             anchor = f"[{s.get('file','file.pdf')}:{s.get('page',1)}]"
-            snippet = (s.get("snippet") or s.get("text") or "").strip().replace("\n", " ")
-            if len(snippet) > 160:
+            base_text = (s.get("text") if detailed else s.get("snippet")) or s.get("text") or ""
+            snippet = base_text.strip().replace("\n", " ")
+            if not detailed and len(snippet) > 160:
                 snippet = snippet[:160] + "…"
             lines.append(f"{i}. Hypothesis: A design that avoids response-diversity reliance improves robustness {anchor}")
             lines.append(f"   Basis: {snippet}")
