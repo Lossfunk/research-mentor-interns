@@ -98,7 +98,9 @@ def main() -> None:
     runtime_prelude = (
         "Use the selected core prompt variant only; never combine prompts. "
         "Default to conversational answers; call tools only when they would materially change advice. "
-        "When user-attached PDFs are present, FIRST use the attachments_search tool to ground your answer with [file:page] citations before any external search."
+        "When user-attached PDFs are present, FIRST use attachments_search to ground your answer with [file:page] citations. "
+        "After grounding, if mentorship guidance would benefit from broader best-practice principles or literature, ALSO consult research_guidelines and o3_search. "
+        "Cite attachments as [file:page] and summarize guideline sources succinctly."
     )
     effective_instructions = f"{runtime_prelude}\n\n{instructions}"
 

@@ -162,7 +162,7 @@ def search(query: str, k: int = 6) -> list[dict[str, Any]]:
 
     try:
         if _retriever is not None:
-            docs = _retriever.get_relevant_documents(query)
+            docs = _retriever.invoke(query) if hasattr(_retriever, "invoke") else _retriever.get_relevant_documents(query)
             results: list[dict[str, Any]] = []
             for d in docs[:k]:
                 meta = d.metadata or {}

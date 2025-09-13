@@ -42,9 +42,8 @@ def get_langchain_tools() -> list[Any]:
             name="o3_search",
             func=wrap(o3_search_tool_fn),
             description=(
-                "Consolidated literature search using O3 reasoning across arXiv and OpenReview. "
-                "Prefer this over legacy arxiv_search; includes transparency logs and sources. "
-                "Input: research topic. Returns key papers with links."
+                "Literature search using O3 reasoning across arXiv/OpenReview. Use AFTER attachments_search to "
+                "contextualize advice with recent work. Input: research topic. Output: key papers with links."
             ),
         ),
         Tool(
@@ -65,24 +64,8 @@ def get_langchain_tools() -> list[Any]:
             name="research_guidelines",
             func=wrap(guidelines_tool_fn),
             description=(
-                "Search curated research methodology and mentorship guidelines from expert sources. "
-                "USE THIS TOOL FOR ALL RESEARCH MENTORSHIP QUESTIONS including: "
-                "research advice, methodology guidance, PhD help, problem selection, research taste development, academic career guidance, "
-                "research strategy decisions, publication dilemmas, research evaluation questions, and academic career planning. "
-                "Specifically use when users ask about: "
-                "- Research direction uncertainty ('no one else is working on this', 'red flag or opportunity', 'unique research direction') "
-                "- Problem worthiness ('worth pursuing vs distraction', 'should I work on this problem', 'is this important') "
-                "- Negative results ('approach doesn't work', 'should I publish negative results', 'my method failed') "
-                "- Novelty concerns ('not sure novel enough', 'how to evaluate novelty', 'is this contribution significant') "
-                "- Publication decisions ('should I publish this', 'where to publish', 'ready for publication') "
-                "- Research taste and judgment ('developing research taste', 'how to choose problems', 'research intuition') "
-                "- Academic career guidance ('career planning', 'PhD advice', 'research skills development') "
-                "Input: any research mentorship question, dilemma, or uncertainty. Examples: "
-                "'I found an interesting research direction but I'm worried no one else is working on it. Is that a red flag or an opportunity?', "
-                "'My results are negative - my approach doesn't work. Should I publish this or try something else?', "
-                "'I have some interesting results but I'm not sure they're 'novel' enough for publication. How do I evaluate this?', "
-                "'How do I know if a research problem is worth pursuing vs just a distraction?' "
-                "Returns: structured guidelines from authoritative sources with source attribution."
+                "Mentorship guidelines from curated sources. Use AFTER attachments_search to translate grounded findings "
+                "into best-practice advice (problem selection, novelty, methodology, publication). Input: mentorship question."
             ),
         ),
         Tool(
