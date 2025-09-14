@@ -4,6 +4,7 @@ import os
 from typing import Any
 
 from ..rich_formatter import print_formatted_response, print_info, print_error, get_formatter, print_user_input
+from .resume import handle_resume_command
 from ..router import route_and_maybe_run_tool
 from ..literature_review import build_research_context
 from ..chat_logger import ChatLogger
@@ -52,6 +53,9 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                         print_info("Failed to clear conversation memory.")
                 else:
                     print_info("This agent does not support clearing memory in this mode.")
+                continue
+            if user.lower().startswith("/resume"):
+                handle_resume_command(agent, user)
                 continue
             if user.lower() in {"exit", "quit"}:
                 cleanup_and_save_session(chat_logger, user)

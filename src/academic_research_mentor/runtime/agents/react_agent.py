@@ -142,6 +142,29 @@ class LangChainReActAgentWrapper:
         except Exception:
             self._history = []
 
+    def preload_history_from_chatlog(self, turns: list[dict]) -> int:
+        """Load Human/AI message pairs from a saved chat log into memory.
+
+        Returns the number of pairs loaded.
+        """
+        try:
+            if not (self._HumanMessage and self._AIMessage):
+                return 0
+            self._history = []
+            loaded = 0
+            for turn in turns:
+                user = (turn or {}).get("user_prompt")
+                ai = (turn or {}).get("ai_response")
+                if user and ai:
+                    self._history.append(self._HumanMessage(content=str(user)))
+                    self._history.append(self._AIMessage(content=str(ai)))
+                    loaded += 1
+            if self._history_enabled and len(self._history) > self._max_history_messages:
+                self._history = self._history[-self._max_history_messages :]
+            return loaded
+        except Exception:
+            return 0
+
     def _clean_for_display(self, content: str, user_text: Optional[str]) -> str:
         """Strip internal reasoning blocks and remove user-echo prefixes for display.
 
