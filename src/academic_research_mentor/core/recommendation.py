@@ -32,10 +32,11 @@ def _keyword_match_score(goal: str, tool_name: str) -> float:
     
     # Research guidelines keywords
     guidelines_keywords = (
-        "methodology", "advice", "guidance", "mentor", "best practices", 
+        "methodology", "advice", "guidance", "mentor", "best practices",
         "research taste", "problem selection", "academic", "phd", "career",
-        "how to", "strategy", "planning", "principles", "develop", "judgment",
-        "intuition", "evaluating", "quality", "taste", "developing"
+        "how to", "how can i", "getting started", "get started", "start writing a paper",
+        "first steps", "roadmap", "strategy", "planning", "principles", "develop",
+        "judgment", "intuition", "evaluating", "quality", "taste", "developing"
     )
     for kw in guidelines_keywords:
         if kw in g:
@@ -74,7 +75,11 @@ def score_tools(goal: str, tools: Dict[str, Any]) -> List[Tuple[str, float, str]
             if name in GUIDELINES_NAMES:
                 # Check if this is a mentorship/guidance query
                 g_lower = goal.lower()
-                mentorship_keywords = ["research taste", "develop", "methodology", "advice", "guidance", "mentor", "how to", "judgment", "intuition"]
+                mentorship_keywords = [
+                    "research taste", "develop", "methodology", "advice", "guidance", "mentor",
+                    "how to", "how can i", "getting started", "get started", "start writing a paper",
+                    "first steps", "roadmap", "judgment", "intuition"
+                ]
                 if any(kw in g_lower for kw in mentorship_keywords):
                     score += 1.5  # High priority for guidelines tool on mentorship queries
                     rationale_parts.append("guidelines_priority")

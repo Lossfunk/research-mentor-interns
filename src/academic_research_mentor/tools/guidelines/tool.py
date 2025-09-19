@@ -13,6 +13,11 @@ from typing import Any, Dict, List, Optional
 from ..base_tool import BaseTool
 from .config import GuidelinesConfig
 from .cache import GuidelinesCache, CostTracker
+from .evidence_collector import EvidenceCollector
+from .query_builder import QueryBuilder
+from .formatter import GuidelinesFormatter
+from .tool_metadata import ToolMetadata
+from .citation_handler import GuidelinesCitationHandler
 
 
 class GuidelinesTool(BaseTool):
@@ -26,6 +31,11 @@ class GuidelinesTool(BaseTool):
         self._search_tool = None
         self._cache = None
         self._cost_tracker = None
+        self._evidence_collector = None
+        self._query_builder = None
+        self._formatter = None
+        self._metadata_handler = None
+        self._citation_handler = None
     
     def initialize(self, config: Optional[Dict[str, Any]] = None) -> None:
         """Initialize the guidelines tool with optional configuration."""
@@ -39,6 +49,13 @@ class GuidelinesTool(BaseTool):
         # Initialize caching and cost tracking
         self._cache = GuidelinesCache(self.config)
         self._cost_tracker = self._cache.cost_tracker
+        
+        # Initialize helper classes
+        self._evidence_collector = EvidenceCollector(self.config, self._search_tool, self._cost_tracker)
+        self._query_builder = QueryBuilder(self.config)
+        self._formatter = GuidelinesFormatter(self.config)
+        self._metadata_handler = ToolMetadata(self.config, self._cache, self._cost_tracker)
+        self._citation_handler = GuidelinesCitationHandler()
     
     def can_handle(self, task_context: Optional[Dict[str, Any]] = None) -> bool:
         """Check if this tool can handle research guidelines queries."""
@@ -69,9 +86,18 @@ class GuidelinesTool(BaseTool):
         return any(re.search(pattern, text, re.IGNORECASE) for pattern in guidelines_patterns)
     
     def execute(self, inputs: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Search research guidelines and return raw content for agent reasoning (RAG-style)."""
+        """Search research guidelines and return evidence or v1 formatted content.
+
+        V2 (preferred when FF_GUIDELINES_V2): returns structured evidence with pagination
+        and provenance fields. V1 returns a formatted string and a list of truncated blobs.
+        """
         query = str(inputs.get("query", "")).strip()
         topic = str(inputs.get("topic", query)).strip()
+        response_format = str(inputs.get("response_format", self.config.RESPONSE_FORMAT_DEFAULT)).strip().lower()
+        mode = str(inputs.get("mode", self.config.DEFAULT_MODE)).strip().lower()
+        max_per_source = int(inputs.get("max_per_source", self.config.DEFAULT_MAX_PER_SOURCE))
+        page_size = int(inputs.get("page_size", getattr(self.config, "RESPONSE_PAGE_SIZE_DEFAULT", 10)))
+        next_token = str(inputs.get("next_token", "")).strip() or None
         
         if not topic:
             return {
@@ -81,7 +107,8 @@ class GuidelinesTool(BaseTool):
                 "note": "Empty query provided"
             }
         
-        if not self._search_tool:
+        # In V2 mode we can operate without a search tool using curated sources only.
+        if not self._search_tool and not self.config.FF_GUIDELINES_V2:
             return {
                 "retrieved_guidelines": [],
                 "formatted_content": f"Guidelines search unavailable for topic: {topic}",
@@ -90,7 +117,7 @@ class GuidelinesTool(BaseTool):
             }
         
         # Check cache first
-        cache_key = f"{query}:{topic}"
+        cache_key = f"{query}:{topic}:{mode}:{response_format}:{max_per_source}:{page_size}:{next_token or ''}"
         cached_result = self._cache.get(cache_key) if self._cache else None
         
         if cached_result:
@@ -104,68 +131,10 @@ class GuidelinesTool(BaseTool):
             self._cost_tracker.record_cache_miss()
         
         try:
-            # Generate targeted search queries based on topic
-            search_queries = self._get_prioritized_queries(topic)[:self.config.MAX_SEARCH_QUERIES]
-            
-            retrieved_guidelines = []
-            
-            for query_str in search_queries:
-                try:
-                    results = self._search_tool.run(query_str)
-                    if results and len(results) > 20:  # Basic quality check
-                        source_type = self._identify_source_type(query_str)
-                        guide_id = f"guide_{hash(results) & 0xfffff:05x}"
-                        source_domain = self._extract_domain(query_str)
-                        
-                        retrieved_guidelines.append({
-                            "guide_id": guide_id,
-                            "source_type": source_type,
-                            "source_domain": source_domain,
-                            "content": results[:500],  # Truncate for token efficiency
-                            "search_query": query_str
-                        })
-                        
-                        # Track search query cost
-                        if self._cost_tracker:
-                            self._cost_tracker.record_search_query(0.01)  # $0.01 per query estimate
-                        
-                except Exception:
-                    # Continue with other queries if one fails
-                    continue
-            
-            if not retrieved_guidelines:
-                result = {
-                    "retrieved_guidelines": [],
-                    "formatted_content": f"No guidelines found for '{topic}' in curated sources. Try rephrasing your query.",
-                    "total_guidelines": 0,
-                    "note": "No guidelines retrieved from search",
-                    "cached": False
-                }
-                
-                # Cache negative result
-                if self._cache:
-                    self._cache.set(cache_key, result)
-                
-                return result
-            
-            # Format content for agent consumption (RAG-style)
-            formatted_content = self._format_guidelines_for_agent(topic, retrieved_guidelines)
-            
-            result = {
-                "retrieved_guidelines": retrieved_guidelines,
-                "formatted_content": formatted_content,
-                "total_guidelines": len(retrieved_guidelines),
-                "topic": topic,
-                "note": f"Retrieved {len(retrieved_guidelines)} relevant guidelines for agent reasoning",
-                "cached": False
-            }
-            
-            # Cache successful result
-            if self._cache:
-                self._cache.set(cache_key, result)
-            
-            return result
-            
+            if self.config.FF_GUIDELINES_V2:
+                return self._execute_v2(topic, mode, max_per_source, response_format, page_size, next_token, cache_key)
+            else:
+                return self._execute_v1(topic, cache_key)
         except Exception as e:
             error_result = {
                 "retrieved_guidelines": [],
@@ -175,162 +144,105 @@ class GuidelinesTool(BaseTool):
                 "note": "Error in guidelines search",
                 "cached": False
             }
-            
-            # Don't cache error results
             return error_result
+
+    def _execute_v2(self, topic: str, mode: str, max_per_source: int, 
+                   response_format: str, page_size: int, next_token: Optional[str], 
+                   cache_key: str) -> Dict[str, Any]:
+        """Execute V2 structured evidence flow."""
+        # Always include curated evidence; optionally add search-based evidence
+        curated = self._evidence_collector.collect_curated_evidence(topic)
+        evidence: List[Dict[str, Any]] = list(curated)
+        sources_covered = sorted(list({e.get("domain", "") for e in curated if e.get("domain")}))
+        
+        if self._search_tool:
+            searched, covered = self._evidence_collector.collect_structured_evidence(topic, mode, max_per_source)
+            evidence.extend(searched)
+            for d in covered:
+                if d not in sources_covered:
+                    sources_covered.append(d)
+        
+        if not evidence:
+            result_v2 = {
+                "topic": topic,
+                "total_evidence": 0,
+                "sources_covered": sources_covered,
+                "evidence": [],
+                "pagination": {"has_more": False, "next_token": None},
+                "cached": False,
+                "note": "No evidence found"
+            }
+            if self._cache:
+                self._cache.set(cache_key, result_v2)
+            return result_v2
+
+        result_v2 = self._formatter.format_v2_response(topic, evidence, sources_covered, response_format, page_size, next_token)
+        
+        # Add citation validation and formatting
+        result_v2 = self._citation_handler.add_citation_metadata(result_v2, evidence)
+        
+        if self._cache:
+            self._cache.set(cache_key, result_v2)
+        return result_v2
+
+    def _execute_v1(self, topic: str, cache_key: str) -> Dict[str, Any]:
+        """Execute V1 fallback flow."""
+        search_queries = self._query_builder.get_prioritized_queries(topic)[:self.config.MAX_SEARCH_QUERIES]
+        retrieved_guidelines = []
+        
+        for query_str in search_queries:
+            try:
+                results = self._search_tool.run(query_str)
+                if results and len(results) > 20:
+                    source_type = self._query_builder.identify_source_type(query_str)
+                    guide_id = f"guide_{hash(results) & 0xfffff:05x}"
+                    source_domain = self._query_builder.extract_domain(query_str)
+                    retrieved_guidelines.append({
+                        "guide_id": guide_id,
+                        "source_type": source_type,
+                        "source_domain": source_domain,
+                        "content": results[:500],
+                        "search_query": query_str
+                    })
+                    if self._cost_tracker:
+                        self._cost_tracker.record_search_query(0.01)
+            except Exception:
+                continue
+
+        if not retrieved_guidelines:
+            result = {
+                "retrieved_guidelines": [],
+                "formatted_content": f"No guidelines found for '{topic}' in curated sources. Try rephrasing your query.",
+                "total_guidelines": 0,
+                "note": "No guidelines retrieved from search",
+                "cached": False
+            }
+            if self._cache:
+                self._cache.set(cache_key, result)
+            return result
+
+        formatted_content = self._formatter.format_guidelines_for_agent(topic, retrieved_guidelines)
+        result = {
+            "retrieved_guidelines": retrieved_guidelines,
+            "formatted_content": formatted_content,
+            "total_guidelines": len(retrieved_guidelines),
+            "topic": topic,
+            "note": f"Retrieved {len(retrieved_guidelines)} relevant guidelines for agent reasoning",
+            "cached": False
+        }
+        if self._cache:
+            self._cache.set(cache_key, result)
+        return result
     
     def get_metadata(self) -> Dict[str, Any]:
         """Return tool metadata for selection and usage."""
-        meta = super().get_metadata()
-        meta["identity"]["owner"] = "guidelines"
-        meta["capabilities"] = {
-            "task_types": ["research_advice", "methodology_guidance", "academic_mentoring"],
-            "domains": ["research_methodology", "academic_career", "problem_selection", "research_taste"]
-        }
-        meta["io"] = {
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Research question or topic"},
-                    "topic": {"type": "string", "description": "Specific area for guidance"}
-                },
-                "required": ["query"]
-            },
-            "output_schema": {
-                "type": "object",
-                "properties": {
-                    "retrieved_guidelines": {"type": "array"},
-                    "formatted_content": {"type": "string"},
-                    "total_guidelines": {"type": "integer"},
-                    "cached": {"type": "boolean"},
-                    "cache_note": {"type": "string"}
-                }
-            }
-        }
-        meta["operational"] = {
-            "cost_estimate": "low-medium",
-            "latency_profile": "5-10 seconds",
-            "rate_limits": "3 searches per query",
-            "caching_enabled": self.config.ENABLE_CACHING,
-            "cache_ttl_hours": self.config.CACHE_TTL_HOURS if self.config.ENABLE_CACHING else None
-        }
-        meta["usage"] = {
-            "ideal_inputs": ["research methodology questions", "academic career advice", "problem selection guidance"],
-            "anti_patterns": ["very broad questions", "non-research topics"],
-            "prerequisites": ["internet connection for search"]
-        }
-        return meta
+        return self._metadata_handler.get_metadata()
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache and cost statistics."""
-        if not self._cost_tracker:
-            return {"error": "Cost tracker not initialized"}
-        
-        stats = self._cost_tracker.get_stats()
-        stats["cache_hit_rate"] = self._cost_tracker.get_cache_hit_rate()
-        return stats
+        return self._metadata_handler.get_cache_stats()
     
     def clear_cache(self) -> Dict[str, Any]:
         """Clear all cached results."""
-        if not self._cache:
-            return {"error": "Cache not initialized"}
-        
-        old_stats = self._cost_tracker.get_stats() if self._cost_tracker else {}
-        self._cache.clear()
-        
-        return {
-            "message": "Cache cleared successfully",
-            "old_stats": old_stats,
-            "cache_enabled": self.config.ENABLE_CACHING
-        }
+        return self._metadata_handler.clear_cache()
     
-    def _identify_source_type(self, query: str) -> str:
-        """Identify the source type based on the search query."""
-        if "gwern.net" in query:
-            return "Hamming's research methodology"
-        elif "lesswrong.com" in query:
-            return "Research project selection"
-        elif "colah.github.io" in query:
-            return "Research taste and judgment"
-        elif "michaelnielsen.org" in query:
-            return "Research methodology principles"
-        elif "letters.lossfunk.com" in query:
-            return "Research methodology and good science"
-        elif "alignmentforum.org" in query:
-            return "Research process and ML guidance"
-        elif "neelnanda.io" in query:
-            return "Mechanistic interpretability methodology"
-        elif "joschu.net" in query:
-            return "ML research methodology"
-        elif "arxiv.org" in query:
-            return "Academic research papers"
-        else:
-            return "Research guidance"
-    
-    def _get_prioritized_queries(self, topic: str) -> List[str]:
-        """Generate prioritized search queries based on topic keywords."""
-        topic_lower = topic.lower()
-        base_queries = self.config.get_search_queries(topic)
-        
-        # Prioritize queries based on topic content
-        if any(keyword in topic_lower for keyword in ['problem', 'choose', 'select', 'pick']):
-            # Prioritize problem selection sources
-            return [
-                f"site:lesswrong.com {topic} research project",
-                f"site:gwern.net {topic} research methodology",
-                f"site:letters.lossfunk.com {topic} research methodology",
-                f"site:alignmentforum.org {topic} research process",
-                f"site:michaelnielsen.org {topic} research principles"
-            ]
-        elif any(keyword in topic_lower for keyword in ['taste', 'judgment', 'quality', 'good']):
-            # Prioritize research taste sources  
-            return [
-                f"site:colah.github.io {topic} research taste",
-                f"site:01.me {topic} research taste",
-                f"site:cuhk.edu.hk {topic} research taste",
-                f"site:letters.lossfunk.com {topic} research methodology",
-                f"site:thoughtforms.life {topic} research advice"
-            ]
-        elif any(keyword in topic_lower for keyword in ['method', 'process', 'approach', 'how']):
-            # Prioritize methodology sources
-            return [
-                f"site:michaelnielsen.org {topic} research principles",
-                f"site:gwern.net {topic} research methodology",
-                f"site:letters.lossfunk.com {topic} research methodology",
-                f"site:alignmentforum.org {topic} research process",
-                f"site:neelnanda.io {topic} research methodology"
-            ]
-        else:
-            # Default to diverse mix
-            return base_queries[:6]
-    
-    def _extract_domain(self, query_str: str) -> str:
-        """Extract domain from site: query."""
-        match = re.search(r'site:(\S+)', query_str)
-        return match.group(1) if match else "unknown"
-    
-    def _format_guidelines_for_agent(self, topic: str, guidelines: List[Dict[str, Any]]) -> str:
-        """Format retrieved guidelines for agent reasoning (RAG-style)."""
-        content_parts = [
-            f"Retrieved {len(guidelines)} research guidelines for topic: '{topic}'\n"
-        ]
-        
-        for guideline in guidelines:
-            guide_id = guideline["guide_id"]
-            source_type = guideline["source_type"] 
-            content = guideline["content"]
-            
-            content_parts.extend([
-                f"GUIDELINE [{guide_id}]:",
-                f"Source: {source_type}",
-                f"Content: {content}",
-                "---"
-            ])
-        
-        content_parts.append(
-            "\nINSTRUCTION: Use the above guidelines to provide evidence-based research advice. "
-            "When referencing guidelines in your response, cite them as '[guide_id]' so users "
-            "can see which specific sources influenced your advice."
-        )
-        
-        return "\n".join(content_parts)

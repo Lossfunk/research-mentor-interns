@@ -71,56 +71,44 @@ def guidelines_tool_fn(query: str, *, internal_delimiters: tuple[str, str] | Non
     try:
         from ..core.orchestrator import Orchestrator
         from ..tools import auto_discover
+        from ..citations import CitationMerger
 
         # Ensure tools are discovered
         auto_discover()
 
         orch = Orchestrator()
+        # Request a larger page to surface more curated sources with full URLs
         result = orch.execute_task(
             task="research_guidelines",
-            inputs={"query": query, "topic": query},
+            inputs={
+                "query": query,
+                "topic": query,
+                "response_format": "concise",
+                "page_size": 30,
+                "mode": "fast",
+            },
             context={"goal": f"research mentorship guidance about {query}"}
         )
 
         if result["execution"]["executed"] and result["results"]:
             tool_result = result["results"]
+
+            # Support both V2 structured evidence and V1 legacy output
+            evidence_items = tool_result.get("evidence") or []
             guidelines = tool_result.get("retrieved_guidelines", [])
 
-            if not guidelines:
+            if not evidence_items and not guidelines:
                 return "No specific guidelines found for this query. Try rephrasing or ask more specific questions about research methodology."
 
-            # Format guidelines for agent consumption
-            formatted_lines = [f"Found {len(guidelines)} relevant research guidelines:"]
-            sources = []
-
-            for guideline in guidelines:
-                guide_id = guideline.get("guide_id", "unknown")
-                source_type = guideline.get("source_type", "Research guidance")
-                source_domain = guideline.get("source_domain", "")
-                content = guideline.get("content", "")[:300]  # Truncate for token efficiency
-
-                # Extract source domain for display
-                if source_domain and source_domain not in sources:
-                    sources.append(source_domain)
-
-                formatted_lines.append(f"GUIDELINE [{guide_id}]:")
-                formatted_lines.append(f"Source: {source_type}")
-                formatted_lines.append(f"Content: {content}")
-                formatted_lines.append("---")
-
-            # Add instruction for agent
-            formatted_lines.append(
-                "\nUse these guidelines to provide evidence-based research advice. "
-                "Reference specific guidelines as [guide_id] in your response."
+            # Use citation merger for unified formatting
+            merger = CitationMerger()
+            merged_result = merger.merge_citations(
+                papers=[],  # No papers from guidelines tool
+                guidelines=evidence_items + guidelines,
+                max_guidelines=30
             )
 
-            # Add sources section at the end
-            if sources:
-                formatted_lines.append("\n\nSource:")
-                for i, source in enumerate(sources, 1):
-                    formatted_lines.append(f"{i}. {source}")
-
-            reasoning_block = "\n".join(formatted_lines)
+            reasoning_block = merged_result["context"]
             # Print as Agent's reasoning panel for TUI differentiation
             print_agent_reasoning(reasoning_block)
             return f"{begin}{reasoning_block}{end}" if begin or end else reasoning_block
@@ -203,3 +191,7 @@ def searchthearxiv_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | Non
     print_agent_reasoning(reasoning)
     begin, end = internal_delimiters or ("", "")
     return f"{begin}{reasoning}{end}" if begin or end else reasoning
+
+
+# Import unified research tool from separate module
+from .unified_research import unified_research_tool_fn
