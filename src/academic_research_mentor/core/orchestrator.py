@@ -76,6 +76,14 @@ class Orchestrator:
             except Exception:
                 pass
 
+        # Add a hint for mentorship queries to ensure citation enforcement by the agent
+        goal_text = str((context or {}).get("goal", "")).lower()
+        must_include_citations = any(
+            kw in goal_text for kw in (
+                "methodology", "advice", "guidance", "mentor", "research taste", "problem selection", "phd", "career"
+            )
+        )
+
         return {
             "ok": True,
             "orchestrator_version": self._version,
@@ -83,6 +91,7 @@ class Orchestrator:
             "context_keys": sorted(list((context or {}).keys())),
             "candidates": sorted(candidates, key=lambda x: x[1], reverse=True),
             "note": "Orchestrator scaffold active. Selection-only; no execution.",
+            "policy": {"must_include_citations": must_include_citations},
         }
     
     def execute_task(self, task: str, inputs: Dict[str, Any], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

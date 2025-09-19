@@ -99,9 +99,18 @@ def main() -> None:
         "Use the selected core prompt variant only; never combine prompts. "
         "Default to conversational answers; call tools only when they would materially change advice. "
         "When user-attached PDFs are present, FIRST use attachments_search to ground your answer with [file:page] citations. "
-        "For novelty/experiments/methodology/related-work: AFTER grounding, consult mentorship_guidelines BEFORE any literature_search; "
+        "For mentorship, hypothesis-generation, getting-started, novelty, experiments, methodology, related-work: AFTER grounding, call mentorship_guidelines (research_guidelines) BEFORE any literature_search; "
         "then, if helpful, run literature_search. In your final answer include (1) at least three concrete, falsifiable experiments and (2) one to two literature anchors (titles with links). "
-        "Always keep claims grounded in attached snippets with [file:page] citations."
+        "Always keep claims grounded in attached snippets with [file:page] citations. "
+        "IMPORTANT: Your advice must avoid hyperbole, and claims must be substantiated by evidence presented. "
+        "Science is evidence-based; never present unsubstantiated claims. If a claim is speculative, pose it as conjecture, not a conclusion."
+    )
+
+    # Enforce citation requirements in final responses per Anthropic guidance on tool ergonomics
+    runtime_prelude += (
+        " Always include citations to guideline sources when giving mentorship or methodology advice. "
+        "Embed inline bracketed citations [n] right after the specific sentences they support, where [n] refers to the numbered source from the mentorship_guidelines tool output. "
+        "Also include a final 'Citations' section listing [n] Title — URL."
     )
     effective_instructions = f"{runtime_prelude}\n\n{instructions}"
 
@@ -115,10 +124,9 @@ def main() -> None:
         if enabled:
             from ..rich_formatter import print_info
             total = gs.get("total_guidelines")
-            categories = gs.get("categories")
             token_estimate = stats.get("token_estimate", 0)
             print_info(
-                f"Guidelines: enabled (mode={cfg.get('mode')}, total={total}, categories={categories}, tokens≈{token_estimate})"
+                f"Guidelines: enabled (mode={cfg.get('mode')}, total={total}, tokens≈{token_estimate})"
             )
             effective_instructions = injector.inject_guidelines(effective_instructions)  # type: ignore[attr-defined]
         else:

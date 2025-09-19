@@ -185,8 +185,30 @@ class GuidelinesInjector:
             except Exception as e:
                 stats['error'] = str(e)
         elif self.config.is_dynamic_mode:
-            stats['guidelines_stats'] = {"tool_backed": True}
-            stats['token_estimate'] = 0
+            # Dynamic mode: report curated source count as a proxy for availability
+            sources_count = None
+            try:
+                from ..tools.guidelines.config import GuidelinesConfig as ToolsGuidelinesConfig  # type: ignore
+                sources_count = len(getattr(ToolsGuidelinesConfig, 'GUIDELINE_SOURCES', {}).keys())
+                if not sources_count:
+                    sources_count = len(getattr(ToolsGuidelinesConfig, 'GUIDELINE_URLS', []))
+                # Rough token estimate: per-source snippet avg 300 chars ≈ 75 tokens
+                # capped by DEFAULT_MAX_PER_SOURCE and RESULT_CAP
+                per_source = getattr(ToolsGuidelinesConfig, 'DEFAULT_MAX_PER_SOURCE', 3)
+                global_cap = getattr(ToolsGuidelinesConfig, 'RESULT_CAP', 30)
+                approx_items = min(global_cap, sources_count * max(1, per_source))
+                approx_tokens = int(approx_items * 75)
+            except Exception:
+                sources_count = 0
+                approx_tokens = 0
+
+            stats['guidelines_stats'] = {
+                "tool_backed": True,
+                "sources": sources_count,
+                # For banner compatibility use total_guidelines to reflect sources when dynamic
+                "total_guidelines": sources_count,
+            }
+            stats['token_estimate'] = approx_tokens
         
         return stats
 

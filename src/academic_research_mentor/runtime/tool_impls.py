@@ -76,51 +76,83 @@ def guidelines_tool_fn(query: str, *, internal_delimiters: tuple[str, str] | Non
         auto_discover()
 
         orch = Orchestrator()
+        # Request a larger page to surface more curated sources with full URLs
         result = orch.execute_task(
             task="research_guidelines",
-            inputs={"query": query, "topic": query},
+            inputs={
+                "query": query,
+                "topic": query,
+                "response_format": "concise",
+                "page_size": 30,
+                "mode": "fast",
+            },
             context={"goal": f"research mentorship guidance about {query}"}
         )
 
         if result["execution"]["executed"] and result["results"]:
             tool_result = result["results"]
+
+            # Support both V2 structured evidence and V1 legacy output
+            evidence_items = tool_result.get("evidence") or []
             guidelines = tool_result.get("retrieved_guidelines", [])
 
-            if not guidelines:
+            if not evidence_items and not guidelines:
                 return "No specific guidelines found for this query. Try rephrasing or ask more specific questions about research methodology."
 
             # Format guidelines for agent consumption
-            formatted_lines = [f"Found {len(guidelines)} relevant research guidelines:"]
-            sources = []
-
-            for guideline in guidelines:
-                guide_id = guideline.get("guide_id", "unknown")
-                source_type = guideline.get("source_type", "Research guidance")
-                source_domain = guideline.get("source_domain", "")
-                content = guideline.get("content", "")[:300]  # Truncate for token efficiency
-
-                # Extract source domain for display
-                if source_domain and source_domain not in sources:
-                    sources.append(source_domain)
-
-                formatted_lines.append(f"GUIDELINE [{guide_id}]:")
-                formatted_lines.append(f"Source: {source_type}")
-                formatted_lines.append(f"Content: {content}")
-                formatted_lines.append("---")
+            lines: list[str] = []
+            citations: list[str] = []
+            id_to_num: dict[str, int] = {}
+            if evidence_items:
+                lines.append(f"Found {len(evidence_items)} evidence items from curated sources:")
+                for i, ev in enumerate(evidence_items[:30], 1):
+                    eid = ev.get("evidence_id", f"ev{i}")
+                    id_to_num[eid] = i
+                    dom = ev.get("domain", "source")
+                    url = ev.get("url") or ""
+                    title = ev.get("title") or dom
+                    snippet = (ev.get("snippet") or "").strip().replace("\n", " ")
+                    if len(snippet) > 300:
+                        snippet = snippet[:300] + "…"
+                    lines.append(f"EVIDENCE [{i}] {title} — {dom}")
+                    lines.append(f"Snippet: {snippet}")
+                    if url:
+                        lines.append(f"Link: {url}")
+                        citations.append(f"[{i}] {title} — {url}")
+                    lines.append("---")
+            if guidelines:
+                lines.append(f"Found {len(guidelines)} relevant research guidelines:")
+                seen_domains: set[str] = set()
+                for g in guidelines:
+                    gid = g.get("guide_id", "unknown")
+                    src = g.get("source_type", "Research guidance")
+                    dom = g.get("source_domain", "")
+                    content = (g.get("content", "") or "")[:300]
+                    if dom and dom not in seen_domains:
+                        seen_domains.add(dom)
+                    lines.append(f"GUIDELINE [{gid}] — {src}")
+                    lines.append(f"Content: {content}")
+                    lines.append("---")
 
             # Add instruction for agent
-            formatted_lines.append(
-                "\nUse these guidelines to provide evidence-based research advice. "
-                "Reference specific guidelines as [guide_id] in your response."
+            lines.append(
+                "\nUse these sources to ground your response. "
+                "Embed inline bracketed citations [n] immediately after specific claims grounded by source n. "
+                "At the end, include a 'Citations' section listing [n] Title — URL."
+            )
+            # Add stricter enforcement notes for the agent
+            lines.append(
+                "Enforcement: For every bullet or numbered item you write, include at least one inline [n] citation. "
+                "Prefer the highest-relevance evidence items first; avoid citing unrelated sources."
             )
 
             # Add sources section at the end
-            if sources:
-                formatted_lines.append("\n\nSource:")
-                for i, source in enumerate(sources, 1):
-                    formatted_lines.append(f"{i}. {source}")
+            if citations:
+                lines.append("\nCitations:")
+                for c in citations:
+                    lines.append(f"- {c}")
 
-            reasoning_block = "\n".join(formatted_lines)
+            reasoning_block = "\n".join(lines)
             # Print as Agent's reasoning panel for TUI differentiation
             print_agent_reasoning(reasoning_block)
             return f"{begin}{reasoning_block}{end}" if begin or end else reasoning_block
