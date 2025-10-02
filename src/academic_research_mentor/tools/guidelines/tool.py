@@ -7,17 +7,24 @@ academic mentoring advice on methodology, problem selection, and research taste.
 
 from __future__ import annotations
 
+import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from ..base_tool import BaseTool
+from .cache import CostTracker, GuidelinesCache
 from .config import GuidelinesConfig
-from .cache import GuidelinesCache, CostTracker
-from .evidence_collector import EvidenceCollector
-from .query_builder import QueryBuilder
-from .formatter import GuidelinesFormatter
-from .tool_metadata import ToolMetadata
 from .citation_handler import GuidelinesCitationHandler
+from .evidence_collector import EvidenceCollector
+from .executors import GuidelinesV1Executor, GuidelinesV2Executor
+from .formatter import GuidelinesFormatter
+from .query_builder import QueryBuilder
+from .search_providers import (
+    BaseSearchProvider,
+    DuckDuckGoSearchProvider,
+    TavilySearchProvider,
+)
+from .tool_metadata import ToolMetadata
 
 
 class GuidelinesTool(BaseTool):
@@ -28,23 +35,32 @@ class GuidelinesTool(BaseTool):
     
     def __init__(self) -> None:
         self.config = GuidelinesConfig()
-        self._search_tool = None
-        self._cache = None
-        self._cost_tracker = None
-        self._evidence_collector = None
-        self._query_builder = None
-        self._formatter = None
-        self._metadata_handler = None
-        self._citation_handler = None
+        self._search_tool: Optional[BaseSearchProvider] = None
+        self._cache: Optional[GuidelinesCache] = None
+        self._cost_tracker: Optional[CostTracker] = None
+        self._evidence_collector: Optional[EvidenceCollector] = None
+        self._query_builder: Optional[QueryBuilder] = None
+        self._formatter: Optional[GuidelinesFormatter] = None
+        self._metadata_handler: Optional[ToolMetadata] = None
+        self._citation_handler: Optional[GuidelinesCitationHandler] = None
     
     def initialize(self, config: Optional[Dict[str, Any]] = None) -> None:
         """Initialize the guidelines tool with optional configuration."""
-        try:
-            from langchain_community.tools import DuckDuckGoSearchRun
-            self._search_tool = DuckDuckGoSearchRun()
-        except ImportError:
-            # Graceful fallback if DuckDuckGo search not available
-            self._search_tool = None
+        search_provider: Optional[BaseSearchProvider] = None
+        api_key = os.getenv("TAVILY_API_KEY", "").strip()
+        if api_key:
+            try:
+                search_provider = TavilySearchProvider(api_key=api_key)
+            except Exception:
+                search_provider = None
+
+        if search_provider is None:
+            try:
+                search_provider = DuckDuckGoSearchProvider()
+            except Exception:
+                search_provider = None
+
+        self._search_tool = search_provider
         
         # Initialize caching and cost tracking
         self._cache = GuidelinesCache(self.config)
@@ -56,6 +72,7 @@ class GuidelinesTool(BaseTool):
         self._formatter = GuidelinesFormatter(self.config)
         self._metadata_handler = ToolMetadata(self.config, self._cache, self._cost_tracker)
         self._citation_handler = GuidelinesCitationHandler()
+
     
     def can_handle(self, task_context: Optional[Dict[str, Any]] = None) -> bool:
         """Check if this tool can handle research guidelines queries."""
@@ -108,7 +125,7 @@ class GuidelinesTool(BaseTool):
             }
         
         # In V2 mode we can operate without a search tool using curated sources only.
-        if not self._search_tool and not self.config.FF_GUIDELINES_V2:
+        if (not self._search_tool or not getattr(self._search_tool, "supports_text", False)) and not self.config.FF_GUIDELINES_V2:
             return {
                 "retrieved_guidelines": [],
                 "formatted_content": f"Guidelines search unavailable for topic: {topic}",
@@ -132,9 +149,39 @@ class GuidelinesTool(BaseTool):
         
         try:
             if self.config.FF_GUIDELINES_V2:
-                return self._execute_v2(topic, mode, max_per_source, response_format, page_size, next_token, cache_key)
-            else:
-                return self._execute_v1(topic, cache_key)
+                if not (
+                    self._evidence_collector
+                    and self._formatter
+                    and self._citation_handler
+                ):
+                    raise RuntimeError("Guidelines V2 dependencies not initialized")
+                executor = GuidelinesV2Executor(
+                    self._evidence_collector,
+                    self._formatter,
+                    self._citation_handler,
+                    self._cache,
+                    self._search_tool,
+                )
+                return executor.run(
+                    topic,
+                    mode,
+                    max_per_source,
+                    response_format,
+                    page_size,
+                    next_token,
+                    cache_key,
+                )
+            if not (self._query_builder and self._formatter):
+                raise RuntimeError("Guidelines V1 dependencies not initialized")
+            executor = GuidelinesV1Executor(
+                self.config,
+                self._search_tool,
+                self._query_builder,
+                self._formatter,
+                self._cache,
+                self._cost_tracker,
+            )
+            return executor.run(topic, cache_key)
         except Exception as e:
             error_result = {
                 "retrieved_guidelines": [],
@@ -145,98 +192,19 @@ class GuidelinesTool(BaseTool):
                 "cached": False
             }
             return error_result
-
-    def _execute_v2(self, topic: str, mode: str, max_per_source: int, 
-                   response_format: str, page_size: int, next_token: Optional[str], 
-                   cache_key: str) -> Dict[str, Any]:
-        """Execute V2 structured evidence flow."""
-        # Always include curated evidence; optionally add search-based evidence
-        curated = self._evidence_collector.collect_curated_evidence(topic)
-        evidence: List[Dict[str, Any]] = list(curated)
-        sources_covered = sorted(list({e.get("domain", "") for e in curated if e.get("domain")}))
-        
-        if self._search_tool:
-            searched, covered = self._evidence_collector.collect_structured_evidence(topic, mode, max_per_source)
-            evidence.extend(searched)
-            for d in covered:
-                if d not in sources_covered:
-                    sources_covered.append(d)
-        
-        if not evidence:
-            result_v2 = {
-                "topic": topic,
-                "total_evidence": 0,
-                "sources_covered": sources_covered,
-                "evidence": [],
-                "pagination": {"has_more": False, "next_token": None},
-                "cached": False,
-                "note": "No evidence found"
-            }
-            if self._cache:
-                self._cache.set(cache_key, result_v2)
-            return result_v2
-
-        result_v2 = self._formatter.format_v2_response(topic, evidence, sources_covered, response_format, page_size, next_token)
-        
-        # Add citation validation and formatting
-        result_v2 = self._citation_handler.add_citation_metadata(result_v2, evidence)
-        
-        if self._cache:
-            self._cache.set(cache_key, result_v2)
-        return result_v2
-
-    def _execute_v1(self, topic: str, cache_key: str) -> Dict[str, Any]:
-        """Execute V1 fallback flow."""
-        search_queries = self._query_builder.get_prioritized_queries(topic)[:self.config.MAX_SEARCH_QUERIES]
-        retrieved_guidelines = []
-        
-        for query_str in search_queries:
-            try:
-                results = self._search_tool.run(query_str)
-                if results and len(results) > 20:
-                    source_type = self._query_builder.identify_source_type(query_str)
-                    guide_id = f"guide_{hash(results) & 0xfffff:05x}"
-                    source_domain = self._query_builder.extract_domain(query_str)
-                    retrieved_guidelines.append({
-                        "guide_id": guide_id,
-                        "source_type": source_type,
-                        "source_domain": source_domain,
-                        "content": results[:500],
-                        "search_query": query_str
-                    })
-                    if self._cost_tracker:
-                        self._cost_tracker.record_search_query(0.01)
-            except Exception:
-                continue
-
-        if not retrieved_guidelines:
-            result = {
-                "retrieved_guidelines": [],
-                "formatted_content": f"No guidelines found for '{topic}' in curated sources. Try rephrasing your query.",
-                "total_guidelines": 0,
-                "note": "No guidelines retrieved from search",
-                "cached": False
-            }
-            if self._cache:
-                self._cache.set(cache_key, result)
-            return result
-
-        formatted_content = self._formatter.format_guidelines_for_agent(topic, retrieved_guidelines)
-        result = {
-            "retrieved_guidelines": retrieved_guidelines,
-            "formatted_content": formatted_content,
-            "total_guidelines": len(retrieved_guidelines),
-            "topic": topic,
-            "note": f"Retrieved {len(retrieved_guidelines)} relevant guidelines for agent reasoning",
-            "cached": False
-        }
-        if self._cache:
-            self._cache.set(cache_key, result)
-        return result
     
     def get_metadata(self) -> Dict[str, Any]:
         """Return tool metadata for selection and usage."""
-        return self._metadata_handler.get_metadata()
+        meta = self._metadata_handler.get_metadata()
+        provider = self._search_tool
+        if provider:
+            operational = meta.setdefault("operational", {})
+            operational["search_provider"] = provider.__class__.__name__
+            operational["supports_structured_search"] = bool(getattr(provider, "supports_structured", False))
+        else:
+            meta.setdefault("operational", {})["search_provider"] = "none"
+            meta["operational"]["supports_structured_search"] = False
+        return meta
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache and cost statistics."""

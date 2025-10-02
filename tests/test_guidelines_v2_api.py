@@ -5,12 +5,29 @@ from typing import Any, Dict
 
 
 class _StubSearch:
+    supports_structured = True
+    supports_text = True
+
     def __init__(self, payload: str) -> None:
         self.payload = payload
 
+    def search_structured(self, query: str, *, domain: str | None = None, mode: str = "fast", max_results: int = 3):
+        return [
+            {
+                "url": f"https://example.com/{domain or 'global'}",
+                "title": f"Result for {query}",
+                "content": f"{self.payload} structured content for {query}",
+                "score": 0.9,
+                "raw_url": f"https://search.example/?q={query}",
+            }
+            for _ in range(max_results)
+        ]
+
+    def search_text(self, query: str) -> str:
+        return f"{self.payload} | {query}"
+
     def run(self, q: str) -> str:
-        # Return a deterministic payload per query
-        return f"{self.payload} | {q}"
+        return self.search_text(q)
 
 
 class _CapturingCache:
@@ -53,6 +70,7 @@ def _make_tool(monkeypatch, payload: str = "stub-result"):
     monkeypatch.setenv("FF_GUIDELINES_V2", "1")
 
     from academic_research_mentor.tools.guidelines.tool import GuidelinesTool
+    from academic_research_mentor.tools.guidelines.evidence_collector import EvidenceCollector
 
     t = GuidelinesTool()
     t.initialize()
@@ -60,6 +78,7 @@ def _make_tool(monkeypatch, payload: str = "stub-result"):
     t._search_tool = _StubSearch(payload)
     t._cache = _CapturingCache()
     t._cost_tracker = t._cache.cost_tracker
+    t._evidence_collector = EvidenceCollector(t.config, t._search_tool, t._cost_tracker)
     return t
 
 

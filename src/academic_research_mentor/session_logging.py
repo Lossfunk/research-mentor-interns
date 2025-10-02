@@ -11,15 +11,24 @@ class SessionLogManager:
         self._log_dir = Path(log_dir)
         self._log_dir.mkdir(parents=True, exist_ok=True)
         ts = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-        self.session_id = f"chat_{ts}"
+        base_session_id = f"chat_{ts}"
+        session_dir = self._log_dir / base_session_id
+        attempt = 1
+        while session_dir.exists():
+            attempt += 1
+            session_dir = self._log_dir / f"{base_session_id}_{attempt}"
+        self.session_id = session_dir.name
+        self._session_dir = session_dir
+        self._session_dir.mkdir(parents=True, exist_ok=True)
         self.started_ms = int(time.time() * 1000)
-        self._events_path = self._log_dir / f"{self.session_id}_events.jsonl"
-        self._session_path = self._log_dir / f"{self.session_id}_session.json"
+        self._events_path = self._session_dir / f"{self.session_id}_events.jsonl"
+        self._session_path = self._session_dir / f"{self.session_id}_session.json"
         self._events_file = self._events_path.open("a", encoding="utf-8")
         self._metadata: Dict[str, Any] = {
             "session_id": self.session_id,
             "started_ms": self.started_ms,
             "events_path": str(self._events_path),
+            "session_dir": str(self._session_dir),
         }
         self._current_turn: Optional[int] = None
         self._turn_state: Dict[int, Dict[str, Any]] = {}

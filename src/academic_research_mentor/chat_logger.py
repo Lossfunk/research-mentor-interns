@@ -14,18 +14,25 @@ class ChatLogger:
     
     def __init__(self, log_dir: str = "convo-logs", session_logger: Optional[SessionLogManager] = None):
         self.log_dir = Path(log_dir)
-        # Create directory if it doesn't exist (with parents)
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self._session_logger = session_logger
+        if session_logger:
+            self.session_id = session_logger.session_id
+            self.session_start_time = datetime.fromtimestamp(session_logger.started_ms / 1000)
+        else:
+            now = datetime.now()
+            self.session_start_time = now
+            self.session_id = f"chat_{now.strftime('%Y%m%d_%H%M%S')}"
+        self.session_dir = self.log_dir / self.session_id
+        if not self.session_dir.exists():
+            self.session_dir.mkdir(parents=True, exist_ok=True)
         self.current_session = []
-        self.session_start_time = datetime.now()
         self._exit_handler_registered = False
         self._pending_stage: Optional[Dict[str, Any]] = None
-        self._session_logger = session_logger
-        
-    def _generate_log_filename(self) -> str:
-        """Generate a unique log filename based on timestamp."""
-        timestamp = self.session_start_time.strftime("%Y%m%d_%H%M%S")
-        return f"chat_{timestamp}.json"
+
+    def _log_path(self) -> Path:
+        """Return the path for the primary chat log file."""
+        return self.session_dir / f"{self.session_id}.json"
         
     def set_pending_stage(self, stage: Dict[str, Any]) -> None:
         """Set a stage dict to be attached to the next added turn."""
@@ -85,7 +92,7 @@ class ChatLogger:
         if not self.current_session:
             return ""
             
-        log_file = self.log_dir / self._generate_log_filename()
+        log_file = self._log_path()
         
         with open(log_file, 'w', encoding='utf-8') as f:
             json.dump(self.current_session, f, indent=2, ensure_ascii=False)
@@ -94,6 +101,7 @@ class ChatLogger:
             summary = self.get_session_summary()
             self._session_logger.attach_metadata("chat_log_path", str(log_file))
             self._session_logger.attach_metadata("total_turns", summary["total_turns"])
+            self._session_logger.attach_metadata("chat_log_dir", str(self.session_dir))
             
         return str(log_file)
 
@@ -105,6 +113,7 @@ class ChatLogger:
         return {
             "total_turns": len(self.current_session),
             "session_start": self.session_start_time.isoformat(),
-            "log_file": self._generate_log_filename(),
+            "log_file": self._log_path().name,
+            "log_dir": str(self.session_dir),
             "has_ai_responses": any(turn.get("ai_response") for turn in self.current_session)
         }
