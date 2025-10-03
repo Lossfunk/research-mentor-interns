@@ -7,6 +7,8 @@ Accelerate AI research with AI. We are building an AI Research Mentor that guide
 - Research-aware CLI powered by LangChain agents and dynamic tool routing.
 - O3-backed literature search with graceful fallbacks and citation synthesis.
 - Mentorship guidelines and experiment planning helpers to keep projects on track.
+- File and PDF ingestion so the mentor can ground responses in user-provided material.
+- Conversation logging with the ability to resume saved sessions from the CLI.
 
 ## Setup
 ```bash
@@ -34,6 +36,13 @@ uv run academic-research-mentor
 # Alternate entrypoint
 uv run python main.py
 ```
+
+## Showcase Video
+A full end-to-end walkthrough video will be added here once recorded to demonstrate both brainstorming and document-review workflows.
+
+## Use Cases
+- **Brainstorming and discussing a research proposal (no PDF):** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the CLI.
+- **Reviewing a finished proposal (with PDF):** Attach the draft at startup so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
 
 ## FAQ
 1. **Can I use `pip` instead of `uv`?**  
