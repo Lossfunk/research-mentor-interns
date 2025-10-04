@@ -37,12 +37,19 @@ uv run academic-research-mentor
 uv run python main.py
 ```
 
-## Showcase Video
+## How It Works
+
+As you work on your Lossfunk application, you can use the research mentor for the following:
+
+**Brainstorming and discussing a research proposal (no PDF):** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the CLI.
+
+**Reviewing a finished proposal (with PDF):** Attach the draft at startup so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
+
+Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4g
+
 [![Watch Demo](https://img.youtube.com/vi/xupym38Ms4g/maxresdefault.jpg)](https://youtu.be/xupym38Ms4g)
 
-## Use Cases
-- **Brainstorming and discussing a research proposal (no PDF):** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the CLI.
-- **Reviewing a finished proposal (with PDF):** Attach the draft at startup so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
+*Note: Your application decision will not be impacted in any way by your use or not of this tool.*
 
 ## FAQ
 1. **Can I use `pip` instead of `uv`?**  
