@@ -22,3 +22,8 @@ file-upload-test-docs/
 mentor-plan.md
 agents.md
 .DS_Store
+
+# Evaluation artifacts
+evaluation/results/**
+!evaluation/results/**/.gitkeep
+evaluation/scripts/__pycache__/
