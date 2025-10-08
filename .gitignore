@@ -33,3 +33,4 @@ evaluation/scripts/__pycache__/
 scripts/publish-pypi.sh
 LICENSE
 BRANCH_STRATEGY.md
+pypi-pushing.md
