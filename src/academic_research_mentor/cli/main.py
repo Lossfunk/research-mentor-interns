@@ -16,6 +16,7 @@ from .commands import (
     show_runs_command,
 )
 from .repl import online_repl
+from .openrouter_setup import maybe_run_openrouter_setup
 from .session import load_env_file, signal_handler
 
 
@@ -68,6 +69,8 @@ def main() -> None:
     if getattr(args, 'show_runs', False):
         show_runs_command()
         return
+
+    maybe_run_openrouter_setup(force=getattr(args, "interactive_setup", False))
 
     # Attach PDFs if provided (do this BEFORE building the agent so tools can reflect attachment presence)
     try:
