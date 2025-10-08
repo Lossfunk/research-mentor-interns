@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 # Compatibility wrapper for legacy imports
-from .rich_ui.formatter import RichFormatter, get_formatter  # noqa: F401
+from .rich_ui.formatter import RichFormatter, SilentRichFormatter, get_formatter, set_formatter  # noqa: F401
 from .rich_ui.io_helpers import (  # noqa: F401
     print_formatted_response,
     print_streaming_chunk,

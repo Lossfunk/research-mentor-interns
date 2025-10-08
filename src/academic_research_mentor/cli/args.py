@@ -68,4 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print per-session tool usage and basic success/failure counts on exit",
     )
+    parser.add_argument(
+        "--interactive-setup",
+        action="store_true",
+        help="Launch the OpenRouter interactive setup wizard before starting the mentor (prompts for API key and model)",
+    )
     return parser

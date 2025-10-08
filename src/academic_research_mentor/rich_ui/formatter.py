@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import io
 from typing import Any, Optional
 
 from rich.console import Console
@@ -107,6 +108,43 @@ class RichFormatter:
         return content
 
 
+
+class SilentRichFormatter(RichFormatter):
+    """Formatter that suppresses terminal output while preserving logging."""
+
+    def __init__(self) -> None:
+        from rich.console import Console
+
+        super().__init__(Console(file=io.StringIO(), force_terminal=False, color_system=None))
+
+    def print_response(self, content: str, title: Optional[str] = None) -> None:  # noqa: D401
+        return
+
+    def print_streaming_chunk(self, chunk: str) -> None:  # noqa: D401
+        return
+
+    def start_streaming_response(self, title: str = "Mentor") -> None:  # noqa: D401
+        return
+
+    def end_streaming_response(self) -> None:  # noqa: D401
+        return
+
+    def print_error(self, message: str) -> None:  # noqa: D401
+        return
+
+    def print_info(self, message: str) -> None:  # noqa: D401
+        return
+
+    def print_success(self, message: str) -> None:  # noqa: D401
+        return
+
+    def print_rule(self, title: Optional[str] = None) -> None:  # noqa: D401
+        return
+
+    def print_section(self, content: str, title: str, border_style: str = "blue") -> None:  # noqa: D401
+        return
+
+
 _global_formatter: Optional[RichFormatter] = None
 
 
@@ -115,3 +153,8 @@ def get_formatter() -> RichFormatter:
     if _global_formatter is None:
         _global_formatter = RichFormatter()
     return _global_formatter
+
+
+def set_formatter(formatter: RichFormatter) -> None:
+    global _global_formatter
+    _global_formatter = formatter
