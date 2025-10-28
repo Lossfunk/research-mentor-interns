@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..rich_formatter import print_agent_reasoning
+from .events import emit_event
 from .telemetry import record_tool_usage, record_metric
 
 
@@ -61,13 +62,18 @@ def registry_tool_call(tool_name: str, payload: dict) -> dict:
         tool = _get(tool_name)
         if tool is None:
             print_agent_reasoning(f"Using tool: {tool_name} (unavailable)")
+            emit_event("tool_call_unavailable", {"tool": tool_name, "payload": payload})
             return {"note": f"tool {tool_name} unavailable"}
         print_agent_reasoning(f"Using tool: {tool_name}")
+        emit_event("tool_call_started", {"tool": tool_name, "payload": payload})
         record_tool_usage(tool_name)
         result = tool.execute(payload, {"goal": payload.get("query", "")})
         record_metric("tool_success")
         print_summary_and_sources(result if isinstance(result, dict) else {})
-        return result if isinstance(result, dict) else {"note": "non-dict result"}
+        normalized = result if isinstance(result, dict) else {"note": "non-dict result"}
+        emit_event("tool_call_finished", {"tool": tool_name, "result": normalized})
+        return normalized
     except Exception as e:
         record_metric("tool_failure")
+        emit_event("tool_call_failed", {"tool": tool_name, "error": str(e)})
         return {"note": f"{tool_name} failed: {e}"}

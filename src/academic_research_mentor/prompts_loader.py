@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 import re
 import unicodedata
-from typing import Optional, Tuple
+from contextlib import suppress
+from importlib import resources as pkg_resources
+from typing import Optional, Tuple, Any
 
 try:
     from .guidelines_engine import create_guidelines_injector
@@ -17,25 +19,33 @@ def load_instructions_from_prompt_md(variant: str, ascii_normalize: bool) -> Tup
 
     Returns (instructions, loaded_variant).
     """
-    search_paths = []
+    override_path = os.environ.get("ARM_PROMPT_FILE") or os.environ.get("ARM_PROMPT_PATH")
+
+    candidates: list[Any] = []
+    if override_path:
+        candidates.append(os.path.abspath(os.path.expanduser(override_path)))
+
     try:
-        pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-        search_paths.append(os.path.join(pkg_root, "prompt.md"))
-        workspace_root = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "..")
-        )
-        search_paths.append(os.path.join(workspace_root, "prompt.md"))
+        workspace_root = os.path.abspath(os.path.join(os.getcwd(), "prompt.md"))
+        candidates.append(workspace_root)
     except Exception:
         pass
 
+    try:
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        candidates.append(os.path.join(repo_root, "prompt.md"))
+    except Exception:
+        pass
+
+    with suppress(Exception):
+        packaged_prompt = pkg_resources.files("academic_research_mentor").joinpath("prompt.md")
+        candidates.append(packaged_prompt)
+
     text: Optional[str] = None
-    for path in search_paths:
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                text = f.read()
-                break
-        except Exception:
-            continue
+    for candidate in candidates:
+        text = _read_candidate(candidate)
+        if text:
+            break
     if text is None:
         return None, variant
 
@@ -66,6 +76,19 @@ def load_instructions_from_prompt_md(variant: str, ascii_normalize: bool) -> Tup
             print(f"Warning: Failed to inject guidelines: {e}")
 
     return block.strip(), "unified"
+
+
+def _read_candidate(candidate: Any) -> Optional[str]:
+    try:
+        if hasattr(candidate, "read_text"):
+            return candidate.read_text(encoding="utf-8")  # type: ignore[call-arg]
+        path = str(candidate)
+        if not os.path.isabs(path):
+            path = os.path.abspath(path)
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read()
+    except Exception:
+        return None
 
 
 def _normalize_whitespace(text: str) -> str:

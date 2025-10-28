@@ -110,12 +110,22 @@ def get_active_session_logger() -> Optional[SessionLogManager]:
 
 
 def log_ui_event(event_type: str, payload: Dict[str, Any]) -> None:
+    _emit_runtime_event(event_type, payload)
     logger = get_active_session_logger()
     if logger:
         logger.log_event(event_type, payload)
 
 
 def log_transparency_event(event: Dict[str, Any]) -> None:
+    _emit_runtime_event("tool_transparency", event)
     logger = get_active_session_logger()
     if logger:
         logger.log_event("tool_transparency", event)
+
+
+def _emit_runtime_event(event_type: str, payload: Dict[str, Any]) -> None:
+    try:
+        from .runtime.events import emit_event
+    except Exception:  # pragma: no cover - guard during early import
+        return
+    emit_event(event_type, payload)

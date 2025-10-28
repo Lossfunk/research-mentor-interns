@@ -5,8 +5,7 @@ from typing import Any
 from ..rich_formatter import print_agent_reasoning
 from .tool_impls import (
     arxiv_tool_fn,
-    o3_search_tool_fn,
-    # searchthearxiv_tool_fn,  # Disabled - tool not working properly
+    web_search_tool_fn,
     math_tool_fn,
     method_tool_fn,
     guidelines_tool_fn,
@@ -41,7 +40,7 @@ def get_langchain_tools() -> list[Any]:
             ),
         ),
         Tool(
-            name="mentorship_guidelines",
+            name="research_guidelines",
             func=wrap(guidelines_tool_fn),
             description=(
                 "Mentorship guidelines from curated sources. For novelty/methodology/experiments questions, use this "
@@ -79,14 +78,15 @@ def get_langchain_tools() -> list[Any]:
                 "Returns papers with [P1], [P2]... and guidelines with [G1], [G2]... for proper citation."
             ),
         ),
-        # Tool(
-        #     name="searchthearxiv_search",
-        #     func=wrap(searchthearxiv_tool_fn),
-        #     description=(
-        #         "Semantic arXiv search via searchthearxiv.com. Use for natural language queries. "
-        #         "Includes transparency logs and sources. Input: research query."
-        #     ),
-        # ),
+        Tool(
+            name="web_search",
+            func=wrap(web_search_tool_fn),
+            description=(
+                "Tavily-powered web search for recent information, news, and non-arXiv sources. "
+                "Use when the user asks for up-to-date context, real-world events, or resources outside academic archives. "
+                "Returns top web results with titles, links, and brief summaries."
+            ),
+        ),
     ]
     # Always add attachments_search tool (it handles empty attachments gracefully)
     def _attachments_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:

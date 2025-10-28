@@ -119,8 +119,8 @@ def guidelines_tool_fn(query: str, *, internal_delimiters: tuple[str, str] | Non
         return f"Error searching guidelines: {str(e)}"
 
 
-def o3_search_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
-    result = registry_tool_call("o3_search", {"query": q, "limit": 8})
+def web_search_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
+    result = registry_tool_call("web_search", {"query": q, "limit": 8})
     items = (result.get("results") if isinstance(result, dict) else []) or []
     if not items:
         note = (result or {}).get("note", "No results") if isinstance(result, dict) else "No results"
@@ -133,7 +133,7 @@ def o3_search_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = N
         suffix = f" ({year})" if year else ""
         link = f" -> {url}" if url else ""
         lines.append(f"- {title}{suffix}{link}")
-    reasoning = "\n".join(["Top literature results:"] + lines)
+    reasoning = "\n".join(["Top web results:"] + lines)
     print_agent_reasoning(reasoning)
     begin, end = internal_delimiters or ("", "")
     return f"{begin}{reasoning}{end}" if begin or end else reasoning
@@ -221,26 +221,6 @@ Experiment N: [Brief title]
         return f"{begin}{reasoning}{end}" if begin or end else reasoning
     except Exception as e:
         return f"Experiment planner failed: {e}"
-
-def searchthearxiv_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
-    result = registry_tool_call("searchthearxiv_search", {"query": q, "limit": 10})
-    papers = (result.get("papers") if isinstance(result, dict) else []) or []
-    if not papers:
-        note = (result or {}).get("note", "No results") if isinstance(result, dict) else "No results"
-        return str(note)
-    lines: list[str] = []
-    for p in papers[:5]:
-        title = p.get("title") or "paper"
-        year = p.get("year") or ""
-        url = p.get("url") or ""
-        suffix = f" ({year})" if year else ""
-        link = f" -> {url}" if url else ""
-        lines.append(f"- {title}{suffix}{link}")
-    reasoning = "\n".join(["Semantic arXiv results:"] + lines)
-    print_agent_reasoning(reasoning)
-    begin, end = internal_delimiters or ("", "")
-    return f"{begin}{reasoning}{end}" if begin or end else reasoning
-
 
 # Import unified research tool from separate module
 from .unified_research import unified_research_tool_fn

@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import os
 import signal
-from typing import Optional, Tuple, Any
-
-from ..prompts_loader import load_instructions_from_prompt_md
-from ..runtime import build_agent
 from ..core.bootstrap import bootstrap_registry_if_enabled
-from ..guidelines_engine import create_guidelines_injector  # type: ignore
 from ..rich_formatter import print_error
+from ..runtime.context import prepare_agent
 
 from .args import build_parser
 from .commands import (
@@ -19,7 +15,8 @@ from .commands import (
     recommend_command,
     show_runs_command,
 )
-from .repl import online_repl, offline_repl
+from .repl import online_repl
+from .openrouter_setup import maybe_run_openrouter_setup
 from .session import load_env_file, signal_handler
 
 
@@ -73,70 +70,7 @@ def main() -> None:
         show_runs_command()
         return
 
-    # Prompt selection
-    prompt_variant = (
-        args.prompt
-        or os.environ.get("ARM_PROMPT")
-        or os.environ.get("LC_PROMPT")
-        or os.environ.get("AGNO_PROMPT")
-        or "mentor"
-    ).strip().lower()
-    ascii_normalize = bool(
-        args.ascii
-        or os.environ.get("ARM_PROMPT_ASCII")
-        or os.environ.get("LC_PROMPT_ASCII")
-        or os.environ.get("AGNO_PROMPT_ASCII")
-    )
-
-    instructions, loaded_variant = load_instructions_from_prompt_md(prompt_variant, ascii_normalize)
-    if not instructions:
-        instructions = (
-            "You are an expert research mentor. Ask high-impact questions first, then provide concise, actionable guidance."
-        )
-        loaded_variant = "fallback"
-
-    runtime_prelude = (
-        "Use the selected core prompt variant only; never combine prompts. "
-        "Default to conversational answers; call tools only when they would materially change advice. "
-        "When user-attached PDFs are present, FIRST use attachments_search to ground your answer with [file:page] citations. "
-        "For research queries about papers, literature, or getting started in a field: PREFER unified_research tool which combines papers and guidelines with [P#] and [G#] citations. "
-        "For mentorship, hypothesis-generation, getting-started, novelty, experiments, methodology: AFTER grounding, call mentorship_guidelines (research_guidelines) BEFORE any literature_search; "
-        "then, if helpful, run literature_search. In your final answer include (1) at least three concrete, falsifiable experiments and (2) one to two literature anchors (titles with links). "
-        "Always keep claims grounded in attached snippets with [file:page] citations. "
-        "IMPORTANT: Your advice must avoid hyperbole, and claims must be substantiated by evidence presented. "
-        "Science is evidence-based; never present unsubstantiated claims. If a claim is speculative, pose it as conjecture, not a conclusion."
-    )
-
-    # Enforce citation requirements in final responses per Anthropic guidance on tool ergonomics
-    runtime_prelude += (
-        " Always include citations to sources when giving research advice. "
-        "When using unified_research tool: embed inline bracketed citations [P#] for papers and [G#] for guidelines right after the specific sentences they support. "
-        "When using other tools: embed inline bracketed citations [n] right after the specific sentences they support, where [n] refers to the numbered source from the tool output. "
-        "Soft guidance: Prefer citing relevant papers [P#] when available for research recommendations. If no relevant papers exist, use guidelines [G#] for methodology advice. "
-        "Also include a final 'Citations' section listing [ID] Title — URL."
-    )
-    effective_instructions = f"{runtime_prelude}\n\n{instructions}"
-
-    # Guidelines injection (optional)
-    try:
-        injector = create_guidelines_injector()
-        stats = injector.get_stats()
-        cfg = stats.get("config", {}) if isinstance(stats, dict) else {}
-        gs = stats.get("guidelines_stats", {}) if isinstance(stats, dict) else {}
-        enabled = bool(cfg.get("is_enabled"))
-        if enabled:
-            from ..rich_formatter import print_info
-            total = gs.get("total_guidelines")
-            token_estimate = stats.get("token_estimate", 0)
-            print_info(
-                f"Guidelines: enabled (mode={cfg.get('mode')}, total={total}, tokens≈{token_estimate})"
-            )
-            effective_instructions = injector.inject_guidelines(effective_instructions)  # type: ignore[attr-defined]
-        else:
-            from ..rich_formatter import print_info
-            print_info("Guidelines: disabled")
-    except Exception:
-        pass
+    maybe_run_openrouter_setup(force=getattr(args, "interactive_setup", False))
 
     # Attach PDFs if provided (do this BEFORE building the agent so tools can reflect attachment presence)
     try:
@@ -158,31 +92,12 @@ def main() -> None:
     except Exception:
         pass
 
-    # Agent
-    agent, offline_reason = build_agent(effective_instructions)
-    if agent is None:
-        print_error(offline_reason or "Model initialization failed. Set one of the API keys in your .env (OPENROUTER_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, ANTHROPIC_API_KEY, or MISTRAL_API_KEY). Then re-run: uv run academic-research-mentor --check-env")
+    ascii_override = True if getattr(args, "ascii", False) else None
+    prep = prepare_agent(prompt_arg=getattr(args, "prompt", None), ascii_override=ascii_override)
+
+    if prep.agent is None:
+        print_error(prep.offline_reason or "Model initialization failed. Set OPENROUTER_API_KEY in your .env and re-run: uv run academic-research-mentor --check-env")
         return
 
-    # Attach PDFs if provided
-    try:
-        pdfs = getattr(args, 'attach_pdf', None)
-        if pdfs:
-            from ..attachments import attach_pdfs, get_summary
-            attach_pdfs([str(p) for p in pdfs if p])
-            from ..rich_formatter import print_info
-            summ = get_summary()
-            msg = (
-                f"Attachments loaded: files={summ.get('files')}, pages={summ.get('pages')}, chunks={summ.get('chunks')} "
-                f"(backend={summ.get('backend')})"
-            )
-            if (summ.get('skipped_large') or 0) > 0:
-                msg += f" | skipped_large={summ.get('skipped_large')} (> {50} MB)"
-            if (summ.get('truncated') or 0) > 0:
-                msg += f" | truncated_files={summ.get('truncated')} (> 500 pages)"
-            print_info(msg)
-    except Exception:
-        pass
-
     # REPL
-    online_repl(agent, loaded_variant)
+    online_repl(prep.agent, prep.loaded_variant)
