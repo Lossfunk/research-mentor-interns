@@ -20,6 +20,8 @@ type RFState = {
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
   addNode: (node: Node) => void;
+  createChatNode: () => void;
+  simulateSearch: () => void;
 };
 
 // Initial Mock Data
@@ -87,4 +89,33 @@ export const useResearchStore = create<RFState>((set, get) => ({
       nodes: [...get().nodes, node],
     });
   },
+  createChatNode: () => {
+    const id = Math.random().toString(36).substring(7);
+    const newNode: Node = {
+      id,
+      type: 'chat',
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: { 
+        prompt: "New Research Thread...", 
+        response: "Waiting for input..." 
+      },
+    };
+    set({ nodes: [...get().nodes, newNode] });
+  },
+  simulateSearch: () => {
+    const id = Math.random().toString(36).substring(7);
+    const newNode: Node = {
+        id,
+        type: 'paper',
+        position: { x: Math.random() * 400 + 400, y: Math.random() * 400 },
+        data: {
+            title: "Simulated Paper Result " + Math.floor(Math.random() * 100),
+            authors: "AI Researcher et al.",
+            year: "2024",
+            citations: Math.floor(Math.random() * 500),
+            abstract: "This is a simulated paper node to demonstrate the UI capabilities before backend integration."
+        }
+    };
+    set({ nodes: [...get().nodes, newNode] });
+  }
 }));
