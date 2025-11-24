@@ -58,6 +58,26 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                 formatter.console.print("")
                 continue
 
+            # Check for dynamic attachments via @filename
+            if "@" in user:
+                try:
+                    import os
+                    from ..attachments.ingest import add_pdfs
+                    
+                    new_pdfs = []
+                    for token in user.split():
+                        if token.startswith("@"):
+                            candidate = token[1:].rstrip(",.!?")
+                            if candidate and os.path.isfile(candidate) and candidate.lower().endswith(".pdf"):
+                                new_pdfs.append(candidate)
+                    
+                    if new_pdfs:
+                        summ = add_pdfs(new_pdfs)
+                        print_info(f"📎 Attached: {', '.join(new_pdfs)} (Total: {summ.get('files')} files)")
+                except Exception as exc:
+                    # specific import errors or other issues shouldn't crash the repl
+                    print_error(f"Attachment error: {exc}")
+
             turn_number = chat_logger.next_turn_number()
             session_logger.start_turn(turn_number, user)
 
@@ -96,7 +116,8 @@ def online_repl(agent: Any, loaded_variant: str) -> None:
                     print_info(f"Telemetry: tools={u}, metrics={m}")
         except Exception:
             pass
-        if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} for turn in chat_logger.current_session):
+        exit_markers = {"exit", "quit", "/exit", "/quit", "eof (ctrl+d)"}
+        if not any((turn.get("user_prompt") or "").lower() in exit_markers for turn in chat_logger.current_session):
             cleanup_and_save_session(chat_logger, "unexpected_exit", session_logger)
 
 
@@ -162,5 +183,6 @@ def offline_repl(reason: str) -> None:
 
             formatter.console.print("")
     finally:
-        if not any(turn.get("user_prompt", "").lower() in {"exit", "quit", "eof (ctrl+d)"} for turn in chat_logger.current_session):
+        exit_markers = {"exit", "quit", "/exit", "/quit", "eof (ctrl+d)"}
+        if not any((turn.get("user_prompt") or "").lower() in exit_markers for turn in chat_logger.current_session):
             cleanup_and_save_session(chat_logger, "unexpected_exit", session_logger)

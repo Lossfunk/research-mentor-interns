@@ -63,3 +63,18 @@ def test_resume_loader_handles_session_directory(tmp_path, monkeypatch) -> None:
         assert len(turns_auto) == 1
     finally:
         manager.finalize("test_clean")
+
+
+def test_exit_turn_not_counted_in_summary(tmp_path) -> None:
+    manager = SessionLogManager(log_dir=str(tmp_path))
+    try:
+        chat_logger = ChatLogger(log_dir=str(tmp_path), session_logger=manager)
+        _write_sample_turn(chat_logger)
+
+        chat_logger.add_exit_turn("/quit")
+        summary = chat_logger.get_session_summary()
+
+        assert summary["total_turns"] == 1
+        assert summary["logged_entries"] == 2
+    finally:
+        manager.finalize("test_clean")

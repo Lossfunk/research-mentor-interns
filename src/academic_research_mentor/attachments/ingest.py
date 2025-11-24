@@ -218,3 +218,19 @@ def get_document_summary() -> str:
     Empty string if no attachments or summary generation failed.
     """
     return _doc_summary
+
+
+def get_attached_files() -> list[str]:
+    """Return list of unique source paths currently attached."""
+    unique_sources = set()
+    for meta in _chunk_meta:
+        if source := meta.get("source"):
+            unique_sources.add(str(source))
+    return sorted(list(unique_sources))
+
+
+def add_pdfs(new_paths: list[str]) -> dict[str, Any]:
+    """Add new PDFs to the current attachment set."""
+    current = get_attached_files()
+    combined = sorted(list(set(current) | set(new_paths)))
+    return attach_pdfs(combined)

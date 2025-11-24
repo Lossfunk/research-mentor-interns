@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .tool_helpers import print_summary_and_sources, registry_tool_call
+from .guidelines_tool import guidelines_tool_fn
 from ..rich_formatter import print_agent_reasoning
+
+
+def _extract_mode(text: str) -> tuple[str, str]:
+    """Return (clean_text, mode) where mode is 'concise' or 'detailed'."""
+    mode = "concise"
+    lowered = (text or "").lower()
+    if "mode:detailed" in lowered or "response:detailed" in lowered:
+        mode = "detailed"
+    cleaned = re.sub(r"\b(mode|response)\s*:\s*detailed\b", "", text or "", flags=re.IGNORECASE).strip()
+    return cleaned, mode
 
 
 def arxiv_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
@@ -11,8 +23,9 @@ def arxiv_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None)
     from ..mentor_tools import arxiv_search
 
     begin, end = internal_delimiters or ("", "")
-    print_agent_reasoning("Using tool: legacy_arxiv_search")
-    res = arxiv_search(query=q, from_year=None, limit=5)
+    clean_q, mode = _extract_mode(q)
+    print_agent_reasoning(f"Using tool: legacy_arxiv_search (mode={mode})")
+    res = arxiv_search(query=clean_q, from_year=None, limit=5)
     print_summary_and_sources(res if isinstance(res, dict) else {})
     papers = (res or {}).get("papers", [])
     if not papers:
@@ -25,8 +38,13 @@ def arxiv_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None)
         title = p.get("title")
         year = p.get("year")
         url = p.get("url")
-        lines.append(f"- {title} ({year}) -> {url}")
-    reasoning = "\n".join(["Legacy arXiv results:"] + lines)
+        abstract = p.get("summary") or ""
+        suffix = f" ({year})" if year else ""
+        if mode == "detailed" and abstract:
+            lines.append(f"- {title}{suffix} -> {url}\n  Abstract: {abstract[:420]}{'…' if len(abstract) > 420 else ''}")
+        else:
+            lines.append(f"- {title}{suffix} -> {url}")
+    reasoning = "\n".join([f"Legacy arXiv results ({mode}):"] + lines)
     print_agent_reasoning(reasoning)
     return f"{begin}{reasoning}{end}" if begin or end else reasoning
 
@@ -65,62 +83,9 @@ def method_tool_fn(text: str, *, internal_delimiters: tuple[str, str] | None = N
     return f"{begin}{reasoning}{end}" if begin or end else reasoning
 
 
-def guidelines_tool_fn(query: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
-    """Search for research methodology and mentorship guidelines from curated sources."""
-    begin, end = internal_delimiters or ("", "")
-    try:
-        from ..core.orchestrator import Orchestrator
-        from ..tools import auto_discover
-        from ..citations import CitationMerger
-
-        # Ensure tools are discovered
-        auto_discover()
-
-        orch = Orchestrator()
-        # Request a larger page to surface more curated sources with full URLs
-        result = orch.execute_task(
-            task="research_guidelines",
-            inputs={
-                "query": query,
-                "topic": query,
-                "response_format": "concise",
-                "page_size": 30,
-                "mode": "fast",
-            },
-            context={"goal": f"research mentorship guidance about {query}"}
-        )
-
-        if result["execution"]["executed"] and result["results"]:
-            tool_result = result["results"]
-
-            # Support both V2 structured evidence and V1 legacy output
-            evidence_items = tool_result.get("evidence") or []
-            guidelines = tool_result.get("retrieved_guidelines", [])
-
-            if not evidence_items and not guidelines:
-                return "No specific guidelines found for this query. Try rephrasing or ask more specific questions about research methodology."
-
-            # Use citation merger for unified formatting
-            merger = CitationMerger()
-            merged_result = merger.merge_citations(
-                papers=[],  # No papers from guidelines tool
-                guidelines=evidence_items + guidelines,
-                max_guidelines=30
-            )
-
-            reasoning_block = merged_result["context"]
-            # Print as Agent's reasoning panel for TUI differentiation
-            print_agent_reasoning(reasoning_block)
-            return f"{begin}{reasoning_block}{end}" if begin or end else reasoning_block
-        else:
-            return "Guidelines search temporarily unavailable. Please try again later."
-
-    except Exception as e:
-        return f"Error searching guidelines: {str(e)}"
-
-
 def web_search_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = None) -> str:
-    result = registry_tool_call("web_search", {"query": q, "limit": 8})
+    clean_q, mode = _extract_mode(q)
+    result = registry_tool_call("web_search", {"query": clean_q, "limit": 8})
     items = (result.get("results") if isinstance(result, dict) else []) or []
     if not items:
         note = (result or {}).get("note", "No results") if isinstance(result, dict) else "No results"
@@ -130,10 +95,17 @@ def web_search_tool_fn(q: str, *, internal_delimiters: tuple[str, str] | None = 
         title = it.get("title") or it.get("paper_title") or "result"
         year = it.get("year") or it.get("published") or ""
         url = it.get("url") or (it.get("urls", {}) or {}).get("paper") or ""
+        snippet = it.get("snippet") or it.get("summary") or ""
         suffix = f" ({year})" if year else ""
         link = f" -> {url}" if url else ""
-        lines.append(f"- {title}{suffix}{link}")
-    reasoning = "\n".join(["Top web results:"] + lines)
+        if mode == "detailed" and snippet:
+            snippet_txt = snippet.strip().replace("\n", " ")
+            if len(snippet_txt) > 280:
+                snippet_txt = snippet_txt[:280] + "…"
+            lines.append(f"- {title}{suffix}{link}\n  {snippet_txt}")
+        else:
+            lines.append(f"- {title}{suffix}{link}")
+    reasoning = "\n".join([f"Top web results ({mode}):"] + lines)
     print_agent_reasoning(reasoning)
     begin, end = internal_delimiters or ("", "")
     return f"{begin}{reasoning}{end}" if begin or end else reasoning

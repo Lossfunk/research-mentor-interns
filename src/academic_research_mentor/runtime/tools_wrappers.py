@@ -32,19 +32,17 @@ def get_langchain_tools() -> list[Any]:
             name="arxiv_search",
             func=wrap(arxiv_tool_fn),
             description=(
-                "Search arXiv for recent academic papers on any research topic. "
-                "Use this whenever the user asks about research, papers, literature, "
-                "related work, or wants to understand what's been done in a field. "
-                "Input: research topic or keywords (e.g. 'transformer models', 'deep reinforcement learning'). "
-                "Returns: list of relevant papers with titles, years, and URLs."
+                "ArXiv papers (concise by default). Input: topic/keywords. Optional: mode:detailed to include abstracts. "
+                "Use for prior-work anchors; do this AFTER guidelines when the user needs literature rather than methodology."
             ),
         ),
         Tool(
             name="research_guidelines",
             func=wrap(guidelines_tool_fn),
             description=(
-                "Mentorship guidelines from curated sources. For novelty/methodology/experiments questions, use this "
-                "IMMEDIATELY AFTER attachments_search to establish best-practice principles BEFORE any literature search."
+                "Research mentorship guidelines (curated, offline-safe). Input: research question/topic. "
+                "CALL FIRST for methodology/novelty/experiments/taste/career queries; use in internal reasoning. "
+                "Returns 3-6 concise [G#] bullets with sources; supports fallback when search is unavailable."
             ),
         ),
         Tool(
@@ -73,18 +71,15 @@ def get_langchain_tools() -> list[Any]:
             name="unified_research",
             func=wrap(unified_research_tool_fn),
             description=(
-                "Unified research tool that combines papers and guidelines with [P#] and [G#] citations. "
-                "Use this for comprehensive research queries that need both literature and methodology guidance. "
-                "Returns papers with [P1], [P2]... and guidelines with [G1], [G2]... for proper citation."
+                "Unified research: combines literature + guidelines with [P#]/[G#] citations. "
+                "Use when the query needs both prior work and mentorship advice; prefer mode:concise unless user asks for depth."
             ),
         ),
         Tool(
             name="web_search",
             func=wrap(web_search_tool_fn),
             description=(
-                "Tavily-powered web search for recent information, news, and non-arXiv sources. "
-                "Use when the user asks for up-to-date context, real-world events, or resources outside academic archives. "
-                "Returns top web results with titles, links, and brief summaries."
+                "Web search (concise; mode:detailed for snippets). Use for fresh news/non-academic context after attachments/guidelines."
             ),
         ),
     ]
