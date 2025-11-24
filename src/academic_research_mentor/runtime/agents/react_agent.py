@@ -5,6 +5,8 @@ import os
 from typing import Any, Dict, List, Optional
 
 from ...rich_formatter import print_formatted_response, print_error, print_agent_reasoning
+from ...citations.enforcer import enforce_citation_schema
+from ...citations.lint import lint_response
 from ...core.stage_detector import detect_stage
 from ...session_logging import SessionLogManager
 
@@ -94,6 +96,8 @@ class LangChainReActAgentWrapper:
 
             # Always print the final, cleaned response once
             cleaned = self._clean_for_display(content, user_text)
+            cleaned = enforce_citation_schema(cleaned)
+            cleaned = self._apply_citation_lint(cleaned)
             if self._session_logger:
                 self._session_logger.log_event("agent_response", {"content": cleaned, "raw": content})
             print_formatted_response(cleaned, "Agent's response")
@@ -144,6 +148,8 @@ class LangChainReActAgentWrapper:
             last_msg = messages[-1]
             content = getattr(last_msg, "content", None) or getattr(last_msg, "text", None) or str(last_msg)
         cleaned = self._clean_for_display(content, user_text)
+        cleaned = enforce_citation_schema(cleaned)
+        cleaned = self._apply_citation_lint(cleaned)
         if self._session_logger:
             self._session_logger.log_event("agent_response", {"content": cleaned, "raw": content, "mode": "run"})
         if self._history_enabled and self._HumanMessage and self._AIMessage:
@@ -212,3 +218,18 @@ class LangChainReActAgentWrapper:
             return text
         except Exception:
             return str(content or "")
+
+    def _apply_citation_lint(self, text: str) -> str:
+        """Optionally run citation lint and surface warnings as agent reasoning."""
+        try:
+            if str(os.environ.get("ARM_CITATION_LINT", "true")).lower() not in ("1", "true", "yes", "on"):
+                return text
+            findings = lint_response(text)
+            issues = findings.get("issues") or []
+            if issues:
+                print_agent_reasoning(f"Citation lint warnings: {', '.join(issues)}")
+                if self._session_logger:
+                    self._session_logger.log_event("citation_lint", {"issues": issues})
+            return text
+        except Exception:
+            return text

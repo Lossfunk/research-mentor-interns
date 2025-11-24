@@ -116,7 +116,8 @@ class ChatLogger:
     def get_session_summary(self) -> Dict[str, Any]:
         """Get a summary of the current session."""
         return {
-            "total_turns": len(self.current_session),
+            "total_turns": self._real_turns,
+            "logged_entries": len(self.current_session),
             "session_start": self.session_start_time.isoformat(),
             "log_file": self._log_path().name,
             "log_dir": str(self.session_dir),

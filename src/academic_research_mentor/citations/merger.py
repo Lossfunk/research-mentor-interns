@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from .models import Citation
 from .aggregator import CitationAggregator
+from .enforcer import enforce_citation_schema, summarize_sources_for_footer
 
 
 class CitationMerger:
@@ -25,7 +26,8 @@ class CitationMerger:
                        papers: List[Dict[str, Any]], 
                        guidelines: List[Dict[str, Any]],
                        max_papers: int = 10,
-                       max_guidelines: int = 20) -> Dict[str, Any]:
+                       max_guidelines: int = 20,
+                       add_footer: bool = True) -> Dict[str, Any]:
         """Merge papers and guidelines with stable [P#] and [G#] IDs.
         
         Args:
@@ -103,6 +105,7 @@ class CitationMerger:
         # Generate formatted context for agent
         context_lines = []
         citations_list = []
+        source_meta: List[Dict[str, Any]] = []
         
         if merged_papers:
             context_lines.append(f"Found {len(merged_papers)} relevant papers:")
@@ -122,6 +125,13 @@ class CitationMerger:
                 context_lines.append("---")
                 
                 citations_list.append(f"[{stable_id}] {title} — {url}")
+                source_meta.append({
+                    "id": stable_id,
+                    "title": title,
+                    "venue": citation.venue,
+                    "year": citation.year,
+                    "strength": "strong",
+                })
         
         if merged_guidelines:
             context_lines.append(f"Found {len(merged_guidelines)} research guidelines:")
@@ -140,6 +150,13 @@ class CitationMerger:
                     context_lines.append(f"Link: {citation.url}")
                     citations_list.append(f"[{stable_id}] {title} — {citation.url}")
                 context_lines.append("---")
+                source_meta.append({
+                    "id": stable_id,
+                    "title": title,
+                    "venue": citation.source,
+                    "year": citation.year,
+                    "strength": "strong",
+                })
         
         # Add soft citation instructions
         context_lines.append(
@@ -170,14 +187,23 @@ class CitationMerger:
             context_lines.append("\nCitations:")
             for citation in citations_list:
                 context_lines.append(f"• {citation}")
-        
+
+        context = "\n".join(context_lines)
+
+        if add_footer and (merged_papers or merged_guidelines):
+            footer = summarize_sources_for_footer(source_meta)
+            if footer:
+                context = f"{context}\n\n{footer}"
+            context = enforce_citation_schema(context, source_metadata=source_meta)
+
         return {
-            "context": "\n".join(context_lines),
+            "context": context,
             "papers": merged_papers,
             "guidelines": merged_guidelines,
             "citations": citations_list,
             "paper_count": len(merged_papers),
-            "guideline_count": len(merged_guidelines)
+            "guideline_count": len(merged_guidelines),
+            "sources": source_meta,
         }
     
     def extract_papers_from_tool_results(self, tool_results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
