@@ -101,7 +101,7 @@ export default function Home() {
          <ResizablePanelGroup direction="horizontal" className="h-full w-full">
             
             {/* Sidebar Panel */}
-            <ResizablePanel defaultSize={20} minSize={15} maxSize={25} collapsible={true} collapsedSize={4} className="min-w-[50px]">
+            <ResizablePanel defaultSize={20} minSize={15} maxSize={25} collapsible={true} collapsedSize={4} className="min-w-[50px] overflow-visible">
                <Sidebar />
             </ResizablePanel>
             

@@ -154,7 +154,7 @@ export const Sidebar = ({
   return (
     <aside 
       className={`
-        relative flex h-full flex-col bg-[#F7F6F3]
+        relative flex h-full flex-col bg-[#F7F6F3] overflow-visible
         transition-all duration-300 ease-in-out
         ${effectiveCollapsed ? 'w-16' : 'w-full md:w-auto'}
         ${!isMobile && 'border-r border-stone-200/60'}
@@ -165,9 +165,9 @@ export const Sidebar = ({
       {!isMobile && (
         <button 
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-4 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 shadow-sm hover:text-stone-600 hover:scale-105 transition-all"
+          className="absolute -right-4 top-5 z-30 flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 shadow-md hover:text-stone-600 hover:shadow-lg hover:scale-110 transition-all duration-200"
         >
-          {isCollapsed ? <PanelLeftOpen size={12} /> : <PanelLeftClose size={12} />}
+          {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
         </button>
       )}
 
