@@ -16,12 +16,13 @@ const Whiteboard = dynamic(() => import("@/components/Whiteboard").then(mod => m
 export default function Home() {
   const [view, setView] = useState<'notebook' | 'whiteboard'>('notebook');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMode, setChatMode] = useState<'floating' | 'docked'>('floating');
 
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-stone-50">
        <Sidebar />
        
-       <div className="flex-1 flex flex-col relative min-w-0">
+       <div className="flex-1 flex flex-col relative min-w-0 transition-all duration-300">
           {/* View Switcher & Toolbar */}
           <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-3 border-b border-stone-200/60 bg-white/80 backdrop-blur-md">
              <div className="flex items-center gap-1 p-1 bg-stone-100/50 rounded-lg border border-stone-200/60">
@@ -56,22 +57,43 @@ export default function Home() {
              </div>
           </div>
 
-          {/* Main Content Area */}
-          <div className="flex-1 relative overflow-hidden bg-stone-50/50">
-             {view === 'notebook' ? (
-                 <div className="h-full overflow-y-auto">
-                     <Notebook />
-                 </div>
-             ) : (
-                 <div className="h-full w-full bg-white">
-                     <Whiteboard />
-                 </div>
-             )}
-             
-             {/* Floating Mentor Chat Overlay */}
-             <MentorChat isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+          <div className="flex-1 flex relative overflow-hidden">
+              {/* Main Content Area */}
+              <div className="flex-1 relative overflow-hidden bg-stone-50/50 transition-all duration-300">
+                {view === 'notebook' ? (
+                    <div className="h-full overflow-y-auto">
+                        <Notebook />
+                    </div>
+                ) : (
+                    <div className="h-full w-full bg-white">
+                        <Whiteboard />
+                    </div>
+                )}
+              </div>
+
+              {/* Docked Chat Container */}
+              {isChatOpen && chatMode === 'docked' && (
+                  <div className="w-[400px] border-l border-stone-200 bg-white h-full flex-shrink-0 animate-in slide-in-from-right-10 duration-300">
+                      <MentorChat 
+                        isOpen={true} 
+                        onClose={() => setIsChatOpen(false)} 
+                        mode="docked"
+                        onToggleMode={() => setChatMode('floating')}
+                      />
+                  </div>
+              )}
           </div>
        </div>
+
+       {/* Floating Chat Overlay */}
+       {isChatOpen && chatMode === 'floating' && (
+           <MentorChat 
+             isOpen={true} 
+             onClose={() => setIsChatOpen(false)} 
+             mode="floating"
+             onToggleMode={() => setChatMode('docked')}
+           />
+       )}
     </main>
   );
 }

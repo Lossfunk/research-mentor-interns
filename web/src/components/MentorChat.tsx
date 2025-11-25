@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Sparkles, Bot, User, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Send, Sparkles, Bot, User, ChevronRight, ChevronDown, PanelRightClose, PanelRightOpen, SidebarClose } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface Message {
@@ -30,7 +30,17 @@ const ThinkingBlock = ({ content }: { content: string }) => {
   );
 };
 
-export const MentorChat = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+export const MentorChat = ({ 
+    isOpen, 
+    onClose, 
+    mode, 
+    onToggleMode 
+}: { 
+    isOpen: boolean; 
+    onClose: () => void;
+    mode: 'floating' | 'docked';
+    onToggleMode: () => void;
+}) => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     { role: 'ai', content: "Hello! I'm your research mentor. How can I help you refine your hypothesis today?" }
@@ -44,11 +54,13 @@ export const MentorChat = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
     }
   }, [messages]);
 
+  // Robust regex that handles newlines and whitespace attributes in thinking tags
   const parseResponse = (fullResponse: string): { thinking?: string, content: string } => {
-    const thinkingMatch = fullResponse.match(/<thinking>([\s\S]*?)<\/thinking>/);
+    // Match <thinking>...</thinking> across multiple lines, non-greedy
+    const thinkingMatch = fullResponse.match(/<thinking>([\s\S]*?)<\/thinking>/i);
     if (thinkingMatch) {
       const thinking = thinkingMatch[1].trim();
-      const content = fullResponse.replace(/<thinking>[\s\S]*?<\/thinking>/, '').trim();
+      const content = fullResponse.replace(/<thinking>[\s\S]*?<\/thinking>/i, '').trim();
       return { thinking, content };
     }
     return { content: fullResponse };
@@ -85,17 +97,30 @@ export const MentorChat = ({ isOpen, onClose }: { isOpen: boolean; onClose: () =
 
   if (!isOpen) return null;
 
+  const containerClasses = mode === 'floating' 
+    ? "absolute right-4 top-16 bottom-4 w-[400px] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-200 z-50 animate-in slide-in-from-right-10 duration-200"
+    : "h-full w-[400px] border-l border-stone-200 bg-white z-0";
+
   return (
-    <div className="absolute right-4 top-16 bottom-4 w-[400px] bg-white rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-200 flex flex-col z-50 overflow-hidden animate-in slide-in-from-right-10 duration-200">
+    <div className={`${containerClasses} bg-white flex flex-col overflow-hidden`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50/80 backdrop-blur-sm">
+      <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50/80 backdrop-blur-sm h-14">
         <div className="flex items-center gap-2 font-medium text-stone-700">
           <Sparkles size={16} className="text-yellow-500" />
           Research Mentor
         </div>
-        <button onClick={onClose} className="text-stone-400 hover:text-stone-600 transition-colors">
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-1">
+            <button 
+                onClick={onToggleMode} 
+                className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-200/50 rounded transition-colors"
+                title={mode === 'floating' ? "Dock to side" : "Float window"}
+            >
+                {mode === 'floating' ? <PanelRightOpen size={16} /> : <SidebarClose size={16} />}
+            </button>
+            <button onClick={onClose} className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-200/50 rounded transition-colors">
+                <X size={18} />
+            </button>
+        </div>
       </div>
 
       {/* Messages */}
