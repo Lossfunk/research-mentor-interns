@@ -1,5 +1,8 @@
-from .builder import build_agent  # re-export for compatibility
-from .context import prepare_agent
-from .tools_wrappers import get_langchain_tools
+"""Runtime module - legacy, being phased out in favor of llm/ and agent/ modules."""
 
-__all__ = ["build_agent", "get_langchain_tools", "prepare_agent"]
+# Note: Most of the old LangChain-based code has been removed.
+# New code should use:
+#   from academic_research_mentor.llm import LLMClient, create_client
+#   from academic_research_mentor.agent import MentorAgent
+
+__all__: list[str] = []
