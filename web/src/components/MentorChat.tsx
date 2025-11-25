@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Sparkles, Bot, User, ChevronRight, ChevronDown, PanelRightClose, PanelRightOpen, SidebarClose } from 'lucide-react';
+import { Rnd } from 'react-rnd';
+import { X, Send, Sparkles, Bot, User, ChevronRight, ChevronDown, PanelRightClose, PanelRightOpen, SidebarClose, Maximize2, Minimize2, GripHorizontal } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface Message {
@@ -34,12 +35,16 @@ export const MentorChat = ({
     isOpen, 
     onClose, 
     mode, 
-    onToggleMode 
+    onToggleMode,
+    isFullscreen,
+    onToggleFullscreen
 }: { 
     isOpen: boolean; 
     onClose: () => void;
     mode: 'floating' | 'docked';
     onToggleMode: () => void;
+    isFullscreen?: boolean;
+    onToggleFullscreen?: () => void;
 }) => {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
@@ -97,19 +102,25 @@ export const MentorChat = ({
 
   if (!isOpen) return null;
 
-  const containerClasses = mode === 'floating' 
-    ? "absolute right-4 top-16 bottom-4 w-[400px] rounded-xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-stone-200 z-50 animate-in slide-in-from-right-10 duration-200"
-    : "h-full w-[400px] border-l border-stone-200 bg-white z-0";
-
-  return (
-    <div className={`${containerClasses} bg-white flex flex-col overflow-hidden`}>
+  const ChatContent = (
+    <div className="h-full w-full bg-white flex flex-col overflow-hidden rounded-xl shadow-sm border border-stone-200">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50/80 backdrop-blur-sm h-14">
-        <div className="flex items-center gap-2 font-medium text-stone-700">
+      <div className={`flex items-center justify-between p-4 border-b border-stone-100 bg-stone-50/80 backdrop-blur-sm h-14 ${mode === 'floating' ? 'cursor-move drag-handle' : ''}`}>
+        <div className="flex items-center gap-2 font-medium text-stone-700 select-none">
           <Sparkles size={16} className="text-yellow-500" />
           Research Mentor
+          {mode === 'floating' && <GripHorizontal size={14} className="text-stone-300 ml-2" />}
         </div>
         <div className="flex items-center gap-1">
+            {mode === 'docked' && onToggleFullscreen && (
+               <button 
+                 onClick={onToggleFullscreen}
+                 className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-200/50 rounded transition-colors"
+                 title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+               >
+                 {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+               </button>
+            )}
             <button 
                 onClick={onToggleMode} 
                 className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-200/50 rounded transition-colors"
@@ -168,6 +179,7 @@ export const MentorChat = ({
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask follow-up questions..."
             className="w-full bg-stone-50 border border-stone-200 rounded-xl py-3 pl-4 pr-12 text-sm outline-none focus:ring-2 focus:ring-stone-200 transition-all placeholder-stone-400 focus:bg-white"
+            onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking input
           />
           <button 
             type="submit"
@@ -180,4 +192,31 @@ export const MentorChat = ({
       </div>
     </div>
   );
+
+  if (mode === 'floating') {
+    return (
+      <Rnd
+        default={{
+          x: window.innerWidth - 450,
+          y: 80,
+          width: 400,
+          height: 600,
+        }}
+        minWidth={320}
+        minHeight={400}
+        bounds="window"
+        className="z-50"
+        dragHandleClassName="drag-handle"
+        enableResizing={{
+           top:false, right:false, bottom:true, left:true, 
+           topRight:false, bottomRight:true, bottomLeft:true, topLeft:true 
+        }}
+      >
+        {ChatContent}
+      </Rnd>
+    );
+  }
+
+  return <div className="h-full w-full">{ChatContent}</div>;
 };
+
