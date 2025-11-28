@@ -20,26 +20,8 @@ export const Sidebar = ({
   onClose?: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<'context' | 'notes'>('context');
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const [memoryConnected, setMemoryConnected] = useState<boolean | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check memory status on mount
-  useEffect(() => {
-    const checkMemoryStatus = async () => {
-      try {
-        const res = await fetch('http://localhost:8000/api/memory/status');
-        if (res.ok) {
-          const data = await res.json();
-          setMemoryConnected(data.connected);
-        }
-      } catch {
-        setMemoryConnected(false);
-      }
-    };
-    checkMemoryStatus();
-  }, []);
+  // Only relevant for mobile drawer mode
+  const isMobile = !!onClose;
   
   const { 
     documents, 
@@ -53,124 +35,16 @@ export const Sidebar = ({
     clearSelection,
     setUploading
   } = useDocumentStore();
-
-  const uploadFile = async (file: File) => {
-    const fileType = ACCEPTED_TYPES[file.type as keyof typeof ACCEPTED_TYPES];
-    if (!fileType) {
-      console.warn('Unsupported file type:', file.type);
-      return;
-    }
-
-    const docId = `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const newDoc: UploadedDocument = {
-      id: docId,
-      filename: file.name,
-      type: fileType,
-      size: file.size,
-      uploadedAt: new Date(),
-      status: 'uploading',
-    };
-    
-    addDocument(newDoc);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch('http://localhost:8000/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      
-      updateDocument(docId, {
-        status: 'ready',
-        content: result.content,
-      });
-    } catch (error) {
-      console.error('Upload error:', error);
-      updateDocument(docId, {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Upload failed',
-      });
-    }
-  };
-
-  const handleFiles = useCallback(async (files: FileList | File[]) => {
-    setUploading(true);
-    const fileArray = Array.from(files);
-    
-    for (const file of fileArray) {
-      await uploadFile(file);
-    }
-    
-    setUploading(false);
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    
-    if (e.dataTransfer.files.length > 0) {
-      handleFiles(e.dataTransfer.files);
-    }
-  }, [handleFiles]);
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFiles(e.target.files);
-      e.target.value = ''; // Reset input
-    }
-  }, [handleFiles]);
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const readyDocs = documents.filter(d => d.status === 'ready');
-  const hasSelection = selectedDocumentIds.size > 0;
-  
-  // If onClose is provided, we are in "mobile drawer" mode, so we don't use internal collapse
-  const isMobile = !!onClose;
-  const effectiveCollapsed = isMobile ? false : isCollapsed;
-
+  // ... rest of logic ...
   return (
     <aside 
       className={`
         relative flex h-full flex-col bg-[#F7F6F3] overflow-visible z-40
-        transition-all duration-300 ease-in-out
-        ${effectiveCollapsed ? 'w-16' : 'w-full md:w-auto'}
+        ${isMobile ? 'w-full' : 'w-full'}
         ${!isMobile && 'border-r border-stone-200/60'}
         ${className}
       `}
     >
-      {/* Collapse Toggle (Desktop only) */}
-      {!isMobile && (
-        <button 
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-4 top-6 z-50 flex h-8 w-8 items-center justify-center rounded-full border border-stone-300 bg-white text-stone-600 shadow-md hover:border-stone-400 hover:text-stone-900 hover:scale-110 transition-all duration-200"
-        >
-          {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-        </button>
-      )}
-
       {/* Mobile Close Button */}
       {isMobile && (
         <button 
@@ -182,53 +56,44 @@ export const Sidebar = ({
       )}
 
       {/* Header */}
-      <div className={`p-4 ${effectiveCollapsed ? 'items-center' : ''} flex flex-col transition-all`}>
-        <div className={`flex items-center justify-between ${effectiveCollapsed ? 'justify-center mb-4' : 'mb-4'}`}>
-          {!effectiveCollapsed && (
-            <div className="flex items-center gap-2 text-stone-800 font-mono font-semibold tracking-tight">
-              <div className="w-4 h-4 rounded-sm bg-stone-900 shadow-sm" />
-              <span className="text-sm">RESEARCH_OS</span>
-            </div>
-          )}
-          {effectiveCollapsed && (
-            <div className="w-4 h-4 rounded-sm bg-stone-900 shadow-sm mb-2" />
-          )}
-          {!effectiveCollapsed && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-1.5 hover:bg-stone-200/60 rounded text-stone-500 hover:text-stone-800 transition-colors touch-target"
-              title="Upload document"
-            >
-              <Plus size={16} />
-            </button>
-          )}
+      <div className="p-4 flex flex-col transition-all">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2 text-stone-800 font-mono font-semibold tracking-tight">
+            <div className="w-4 h-4 rounded-sm bg-stone-900 shadow-sm" />
+            <span className="text-sm">RESEARCH_OS</span>
+          </div>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 hover:bg-stone-200/60 rounded text-stone-500 hover:text-stone-800 transition-colors touch-target"
+            title="Upload document"
+          >
+            <Plus size={16} />
+          </button>
         </div>
         
-        {!effectiveCollapsed && (
-          <div className="relative group">
-            <Search size={13} className="absolute left-3 top-2.5 text-stone-400 group-focus-within:text-stone-600 transition-colors" />
-            <input 
-              className="w-full rounded bg-white border border-stone-200 py-1.5 pl-9 pr-3 text-xs font-mono text-stone-700 placeholder-stone-400 outline-none focus:border-stone-400 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0.05)] focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
-              placeholder="SEARCH_FILES..."
-            />
-          </div>
-        )}
+        <div className="relative group">
+          <Search size={13} className="absolute left-3 top-2.5 text-stone-400 group-focus-within:text-stone-600 transition-colors" />
+          <input 
+            className="w-full rounded bg-white border border-stone-200 py-1.5 pl-9 pr-3 text-xs font-mono text-stone-700 placeholder-stone-400 outline-none focus:border-stone-400 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0.05)] focus:shadow-[2px_2px_0px_0px_rgba(0,0,0,0.1)]"
+            placeholder="SEARCH_FILES..."
+          />
+        </div>
       </div>
 
       {/* Tabs */}
-      <div className={`flex gap-1 px-3 pb-3 border-b border-stone-200/60 ${effectiveCollapsed ? 'flex-col' : ''}`}>
+      <div className="flex gap-1 px-3 pb-3 border-b border-stone-200/60">
         <SidebarTab 
-          label={effectiveCollapsed ? "" : "Context"} 
+          label="Context" 
           icon={<FolderOpen size={16} />} 
           active={activeTab === 'context'} 
-          collapsed={effectiveCollapsed}
+          collapsed={false}
           onClick={() => setActiveTab('context')}
         />
         <SidebarTab 
-          label={effectiveCollapsed ? "" : "Notes"} 
+          label="Notes" 
           icon={<FileText size={16} />} 
           active={activeTab === 'notes'} 
-          collapsed={effectiveCollapsed}
+          collapsed={false}
           onClick={() => setActiveTab('notes')}
         />
       </div>
@@ -253,7 +118,7 @@ export const Sidebar = ({
         {activeTab === 'context' ? (
           <>
             {/* Selection controls */}
-            {!effectiveCollapsed && documents.length > 0 && (
+            {documents.length > 0 && (
               <div className="flex items-center justify-between px-1 py-1 mb-2">
                 <span className="text-[10px] font-semibold uppercase tracking-wider text-stone-400">
                   Documents ({documents.length})
@@ -281,7 +146,7 @@ export const Sidebar = ({
                   key={doc.id}
                   doc={doc}
                   isSelected={selectedDocumentIds.has(doc.id)}
-                  isCollapsed={effectiveCollapsed}
+                  isCollapsed={false}
                   onToggleSelect={() => toggleDocumentSelection(doc.id)}
                   onRemove={() => removeDocument(doc.id)}
                   formatFileSize={formatFileSize}
@@ -290,7 +155,7 @@ export const Sidebar = ({
             </div>
 
             {/* Empty state / Drop zone */}
-            {documents.length === 0 && !effectiveCollapsed && (
+            {documents.length === 0 && (
               <div 
                 className={`
                   mt-4 p-6 border-2 border-dashed rounded-xl text-center cursor-pointer
@@ -314,34 +179,32 @@ export const Sidebar = ({
           </>
         ) : (
           <div className="p-8 text-center text-sm text-stone-400 italic">
-            {!effectiveCollapsed && "Notes feature coming soon..."}
+            "Notes feature coming soon..."
           </div>
         )}
       </div>
 
       {/* Footer */}
-      {!effectiveCollapsed && (
-        <div className="border-t border-stone-200 p-4 text-xs text-stone-500 bg-stone-100/50">
-          <div className="flex justify-between items-center">
-            <span className="font-medium">{selectedDocumentIds.size > 0 ? `${selectedDocumentIds.size} active` : 'No active context'}</span>
-            <div className="flex items-center gap-3">
-              {isUploading && (
-                <span className="flex items-center gap-1.5 text-blue-600">
-                  <Loader2 size={12} className="animate-spin" />
-                  Uploading
-                </span>
-              )}
-              <span 
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${memoryConnected ? 'bg-green-100 text-green-700' : 'bg-stone-200 text-stone-500'}`}
-                title={memoryConnected ? 'Supermemory connected' : 'Memory offline'}
-              >
-                <Brain size={12} />
-                {memoryConnected ? 'Online' : 'Offline'}
+      <div className="border-t border-stone-200 p-4 text-xs text-stone-500 bg-stone-100/50">
+        <div className="flex justify-between items-center">
+          <span className="font-medium">{selectedDocumentIds.size > 0 ? `${selectedDocumentIds.size} active` : 'No active context'}</span>
+          <div className="flex items-center gap-3">
+            {isUploading && (
+              <span className="flex items-center gap-1.5 text-blue-600">
+                <Loader2 size={12} className="animate-spin" />
+                Uploading
               </span>
-            </div>
+            )}
+            <span 
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${memoryConnected ? 'bg-green-100 text-green-700' : 'bg-stone-200 text-stone-500'}`}
+              title={memoryConnected ? 'Supermemory connected' : 'Memory offline'}
+            >
+              <Brain size={12} />
+              {memoryConnected ? 'Online' : 'Offline'}
+            </span>
           </div>
         </div>
-      )}
+      </div>
     </aside>
   );
 };
