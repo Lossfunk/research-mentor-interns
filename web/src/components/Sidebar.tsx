@@ -37,7 +37,100 @@ export const Sidebar = ({
     clearSelection,
     setUploading
   } = useDocumentStore();
-  // ... rest of logic ...
+
+  const uploadFile = async (file: File) => {
+    const fileType = ACCEPTED_TYPES[file.type as keyof typeof ACCEPTED_TYPES];
+    if (!fileType) {
+      console.warn('Unsupported file type:', file.type);
+      return;
+    }
+
+    const docId = `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const newDoc: UploadedDocument = {
+      id: docId,
+      filename: file.name,
+      type: fileType,
+      size: file.size,
+      uploadedAt: new Date(),
+      status: 'uploading',
+    };
+    
+    addDocument(newDoc);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      
+      updateDocument(docId, {
+        status: 'ready',
+        content: result.content,
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      updateDocument(docId, {
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Upload failed',
+      });
+    }
+  };
+
+  const handleFiles = useCallback(async (files: FileList | File[]) => {
+    setUploading(true);
+    const fileArray = Array.from(files);
+    
+    for (const file of fileArray) {
+      await uploadFile(file);
+    }
+    
+    setUploading(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    if (e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
+    }
+  }, [handleFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
+      e.target.value = ''; // Reset input
+    }
+  }, [handleFiles]);
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const readyDocs = documents.filter(d => d.status === 'ready');
+  const hasSelection = selectedDocumentIds.size > 0;
+
   return (
     <aside 
       className={`
