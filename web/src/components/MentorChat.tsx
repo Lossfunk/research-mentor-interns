@@ -402,11 +402,13 @@ export const MentorChat = ({
   };
 
   // Modified Submit Handler (accepts content arg)
-  const handleSend = async (userMsg: string) => {
-    if (!userMsg.trim()) return;
+  const handleSubmit = async (e: React.FormEvent | React.KeyboardEvent) => {
+    if (e && 'preventDefault' in e) e.preventDefault();
+    if (!input.trim()) return;
 
+    const userMsg = input;
     const imagesForMessage = pendingImages;
-    // setInput(""); // Removed as input is managed by Tiptap
+    setInput(""); // Clear input immediately
     setPendingImages([]); // Clear pending images immediately
     
     addUserMessage(userMsg, imagesForMessage);
