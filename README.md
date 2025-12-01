@@ -54,6 +54,7 @@ As you work on your Lossfunk application, you can use the research mentor for th
 
 **Reviewing a finished proposal (with PDF):** Attach the draft so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
 
+#Outdated ReadMe, need to update.
 Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4g
 
 [![Watch Demo](https://img.youtube.com/vi/xupym38Ms4g/maxresdefault.jpg)](https://youtu.be/xupym38Ms4g)
