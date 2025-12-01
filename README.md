@@ -4,19 +4,26 @@
 Accelerate AI research with AI. We are building an AI Research Mentor that guides researchers through the entire research lifecycle so they can move from idea to published work faster.
 
 ## Key Capabilities
-- Research-aware CLI powered by LangChain agents and dynamic tool routing.
-- O3-backed literature search with graceful fallbacks and citation synthesis.
+- **Research-aware Web UI** powered by direct **OpenAI SDK** integration for transparent and reliable agent behavior.
+- **Interactive Research Canvas**: A notebook-centric interface with drag-and-drop support, rich text editing, and infinite whiteboard space.
+- **Dynamic Tool Routing**: Smart selection of research tools including web search, arXiv, and guidelines.
 - Mentorship guidelines and experiment planning helpers to keep projects on track.
-- File and PDF ingestion so the mentor can ground responses in user-provided material.
-- Conversation logging with the ability to resume saved sessions from the CLI.
 
 ## Setup
+
+### Backend
 ```bash
-# Install dependencies
+# Install Python dependencies
 uv sync
 
 # Run tests (optional)
 uv run pytest -q
+```
+
+### Frontend
+```bash
+cd web
+npm install
 ```
 
 ## Environment
@@ -26,24 +33,26 @@ cp .example.env .env
 Edit `.env` and add your `OPENROUTER_API_KEY` (recommended). Other provider keys are optional fallbacks.
 
 ## Usage
+
+### 1. Start the Backend Server
 ```bash
-# Verify configuration
-uv run academic-research-mentor --check-env
-
-# Start the mentor CLI
-uv run academic-research-mentor
-
-# Alternate entrypoint
-uv run python main.py
+uv run python -m uvicorn academic_research_mentor.server:app --reload --port 8000
 ```
+
+### 2. Start the Frontend Web UI
+```bash
+cd web
+npm run dev
+```
+The web interface will be available at `http://localhost:3000`.
 
 ## How It Works
 
 As you work on your Lossfunk application, you can use the research mentor for the following:
 
-**Brainstorming and discussing a research proposal (no PDF):** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the CLI.
+**Brainstorming and discussing a research proposal:** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the interactive canvas.
 
-**Reviewing a finished proposal (with PDF):** Attach the draft at startup so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
+**Reviewing a finished proposal (with PDF):** Attach the draft so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
 
 Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4g
 
@@ -52,6 +61,7 @@ Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4
 *Note: Your application decision will not be impacted in any way by your use or not of this tool.*
 
 ## FAQ
+
 1. **Can I use `pip` instead of `uv`?**  
    You can, but we recommend `uv` because it gives fine-grained control over Python versions and dependency resolution, which improves reproducibility. See a deeper comparison here: <https://blog.kusho.ai/uv-pip-killer-or-yet-another-package-manager/>
 
@@ -65,13 +75,10 @@ Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4
    More background: <https://stackoverflow.com/questions/79340227/modulenotfounderror-when-installing-my-own-project>
 
 3. **Can I attach a PDF?**  
-   Yes. Launch the mentor with `--attach-pdf <path-to-pdf>`, for example: 
-   ```bash
-   uv run academic-research-mentor --attach-pdf abc.pdf
-   ```
+   Yes. In the Web UI, you can drag and drop PDFs directly.
 
 4. **Can I resume past conversations?**  
-   Absolutely. Start the mentor, run `/resume`, and select the conversation you want to load. The turns will be restored into memory for the current session.
+   Yes. The Web UI persists conversations automatically.
 
 ## Troubleshooting
 - Ensure Python 3.11+ is installed.
