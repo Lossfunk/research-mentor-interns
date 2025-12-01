@@ -37,7 +37,42 @@ uv run academic-research-mentor
 uv run python main.py
 ```
 
+## How It Works
+
+As you work on your Lossfunk application, you can use the research mentor for the following:
+
+**Brainstorming and discussing a research proposal (no PDF):** Kick off an idea sprint, explore literature leads, and co-develop an initial plan directly in the CLI.
+
+**Reviewing a finished proposal (with PDF):** Attach the draft at startup so the mentor can critique structure, highlight gaps, and suggest revisions with citations.
+
+Here is a quick video walkthrough of how this works: https://youtu.be/xupym38Ms4g
+
+[![Watch Demo](https://img.youtube.com/vi/xupym38Ms4g/maxresdefault.jpg)](https://youtu.be/xupym38Ms4g)
+
+*Note: Your application decision will not be impacted in any way by your use or not of this tool.*
+
+## FAQ
+1. **Can I use `pip` instead of `uv`?**  
+   You can, but we recommend `uv` because it gives fine-grained control over Python versions and dependency resolution, which improves reproducibility. See a deeper comparison here: <https://blog.kusho.ai/uv-pip-killer-or-yet-another-package-manager/>
+
+2. **When running the mentor I see `ModuleNotFoundError: No module named 'academic_research_mentor'`. How do I fix this?**  
+   This is usually a path-resolution issue. Add the following to your `pyproject.toml`:
+   ```toml
+   [tool.setuptools.packages.find]
+   where = ["./"]
+   include = ["academic-research-mentor"]
+   ```
+   More background: <https://stackoverflow.com/questions/79340227/modulenotfounderror-when-installing-my-own-project>
+
+3. **Can I attach a PDF?**  
+   Yes. Launch the mentor with `--attach-pdf <path-to-pdf>`, for example: 
+   ```bash
+   uv run academic-research-mentor --attach-pdf abc.pdf
+   ```
+
+4. **Can I resume past conversations?**  
+   Absolutely. Start the mentor, run `/resume`, and select the conversation you want to load. The turns will be restored into memory for the current session.
+
 ## Troubleshooting
 - Ensure Python 3.11+ is installed.
 - Re-run `uv sync` after dependency changes.
-- Set additional API keys (OpenAI, Anthropic, etc.) if you prefer alternative models.
